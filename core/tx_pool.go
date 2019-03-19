@@ -828,20 +828,6 @@ func (pool *TxPool) checkLockout(tx *types.Transaction) (bool,error) {
 	    return false,ErrInvalidSender
     }
 
-    /*dcrmfrom := pool.currentState.GetDcrmAddress(from,crypto.Keccak256Hash([]byte(strings.ToLower(cointype))),0)
-    if dcrmfrom == "" {
-	    return false,errors.New("the coinbase account has not request dcrm addr before.")
-    }
-
-    if dcrm.IsValidDcrmAddr(dcrmfrom,cointype) == false {
-	if strings.EqualFold(cointype,"ETH") == true || strings.EqualFold(cointype,"GUSD") == true || strings.EqualFold(cointype,"BNB") == true || strings.EqualFold(cointype,"MKR") == true || strings.EqualFold(cointype,"HT") == true || strings.EqualFold(cointype,"BNT") == true {
-	    return false,errors.New("ETH coinbase dcrm addr must start with 0x and len = 42.")
-	}
-	if strings.EqualFold(cointype,"BTC") == true {
-	    return false,errors.New("BTC coinbase dcrm addr is not the right format.")
-	}
-    }*///
-
     if strings.EqualFold(cointype,"ETH") == true || strings.EqualFold(cointype,"GUSD") == true || strings.EqualFold(cointype,"BNB") == true || strings.EqualFold(cointype,"MKR") == true || strings.EqualFold(cointype,"HT") == true || strings.EqualFold(cointype,"BNT") == true {
 	if !isDecimalNumber(value) {
 	    return false,errors.New("value is not the right format.")
@@ -1235,18 +1221,8 @@ func (pool *TxPool) validateConfirmAddr(tx *types.Transaction) (bool,error) {
 
     result,err := tx.MarshalJSON()
 
-    if !dcrm.IsInGroup() {
-	msg := tx.Hash().Hex() + sep9 + string(result) + sep9 + from.Hex() + sep9 + dcrmaddr + sep9 + "xxxx" + sep9 + cointype 
-	_,err = dcrm.SendReqToGroup(msg,"rpc_confirm_dcrmaddr")
-	if err != nil {
-		return false, err
-	}
-    
-	return true,nil 
-    }
-
-    v := dcrm.DcrmConfirmAddr{Txhash:tx.Hash().Hex(),Tx:string(result),FusionAddr:from.Hex(),DcrmAddr:dcrmaddr,Hashkey:"xxxx",Cointype:cointype}
-    _,err = dcrm.Dcrm_ConfirmAddr(&v)
+    msg := tx.Hash().Hex() + sep9 + string(result) + sep9 + from.Hex() + sep9 + dcrmaddr + sep9 + "xxxx" + sep9 + cointype 
+    _,err = dcrm.SendReqToGroup(msg,"rpc_confirm_dcrmaddr")
     if err != nil {
 	    return false, err
     }

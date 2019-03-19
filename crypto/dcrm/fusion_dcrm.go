@@ -120,6 +120,8 @@ var (
     BLOCK_FORK_0 = "18000" //fork for dcrmsendtransaction.not to self.
     BLOCK_FORK_1 = "280000" //fork for lockin,txhash store into block.
     BLOCK_FORK_2 = "100000" //fork for lockout choose real dcrm from.
+
+    rpcs *big.Int //add for rpc cmd prex
 )
 
 func IsCodeVersion(version string) bool {
@@ -1061,7 +1063,6 @@ func SendReqToGroup(msg string,rpctype string) (string,error) {
 	    rch := make(chan interface{},1)
 	    req = RpcReq{rpcdata:&v,ch:rch}
 	case "rpc_req_dcrmaddr":
-	    //log.Debug("SendReqToGroup,rpc_req_dcrmaddr")
 	    m := strings.Split(msg,sep9)
 	    v := ReqAddrSendMsgToDcrm{Fusionaddr:m[0],Pub:m[1],Cointype:m[2]}
 	    rch := make(chan interface{},1)
@@ -1092,7 +1093,11 @@ func SendReqToGroup(msg string,rpctype string) (string,error) {
 	t = 80 
     }
 
-    RpcReqNonDcrmQueue <- req
+    if !IsInGroup() {
+	RpcReqNonDcrmQueue <- req
+    } else {
+	RpcReqQueue <- req
+    }
     //ret := (<- req.ch).(RpcDcrmRes)
     chret,cherr := GetChannelValue(t,req.ch)
     if cherr != nil {
@@ -1157,6 +1162,68 @@ func (self *RecvMsg) Run(workid int,ch chan interface{}) bool {
     w := workers[workid]
     var msgCode string 
     msgCode = mm[1]
+
+    if msgCode == "rpc_req_dcrmaddr" {
+	mmm := strings.Split(mm[0],sep)
+	prex := mmm[0]
+	types.SetDcrmRpcWorkersData(prex,strconv.Itoa(workid))
+	dcrm_liloreqAddress(prex,mmm[1],mmm[2],mmm[3],ch)
+	ret,cherr := GetChannelValue(ch_t,ch)
+	if cherr != nil {
+	    log.Debug(cherr.Error())
+	    msg := prex + sep + "fail" + msgtypesep + "rpc_req_dcrmaddr_res"
+	    types.SetDcrmRpcResData(prex,msg)
+	    p2pdcrm.Broatcast(msg)
+	    go func(s string) {
+		 time.Sleep(time.Duration(200)*time.Second) //1000 == 1s
+		 types.DeleteDcrmRpcMsgData(s)
+		 types.DeleteDcrmRpcWorkersData(s)
+		 types.DeleteDcrmRpcResData(s)
+	    }(prex)
+	    return false
+	}
+	msg := prex + sep + ret + msgtypesep + "rpc_req_dcrmaddr_res"
+	types.SetDcrmRpcResData(prex,msg)
+	p2pdcrm.Broatcast(msg)
+	go func(s string) {
+	     time.Sleep(time.Duration(200)*time.Second) //1000 == 1s
+	     types.DeleteDcrmRpcMsgData(s)
+	     types.DeleteDcrmRpcWorkersData(s)
+	     types.DeleteDcrmRpcResData(s)
+	}(prex)
+	return true 
+    }
+
+    if msgCode == "rpc_confirm_dcrmaddr" {
+	mmm := strings.Split(mm[0],sep)
+	prex := mmm[0]
+	types.SetDcrmRpcWorkersData(prex,strconv.Itoa(workid))
+	dcrm_confirmaddr(prex,mmm[1],mmm[2],mmm[3],mmm[4],mmm[5],mmm[6],ch)
+	ret,cherr := GetChannelValue(ch_t,ch)
+	if cherr != nil {
+	    log.Debug(cherr.Error())
+	    msg := prex + sep + "fail" + msgtypesep + "rpc_confirm_dcrmaddr_res"
+	    types.SetDcrmRpcResData(prex,msg)
+	    p2pdcrm.Broatcast(msg)
+	    go func(s string) {
+		 time.Sleep(time.Duration(200)*time.Second) //1000 == 1s
+		 types.DeleteDcrmRpcMsgData(s)
+		 types.DeleteDcrmRpcWorkersData(s)
+		 types.DeleteDcrmRpcResData(s)
+	    }(prex)
+	    return false
+	}
+	msg := prex + sep + ret + msgtypesep + "rpc_confirm_dcrmaddr_res"
+	types.SetDcrmRpcResData(prex,msg)
+	p2pdcrm.Broatcast(msg)
+	go func(s string) {
+	     time.Sleep(time.Duration(200)*time.Second) //1000 == 1s
+	     types.DeleteDcrmRpcMsgData(s)
+	     types.DeleteDcrmRpcWorkersData(s)
+	     types.DeleteDcrmRpcResData(s)
+	}(prex)
+	return true 
+    }
 
     if msgCode == "startdcrm" {
 	GetEnodesInfo()
@@ -1849,13 +1916,37 @@ func (self *ConfirmAddrSendMsgToDcrm) Run(workid int,ch chan interface{}) bool {
     }
 
     GetEnodesInfo()
-    w := non_dcrm_workers[workid]
-    
-    ss := cur_enode + "-" + self.Txhash + "-" + self.Tx + "-" + self.FusionAddr + "-" + self.DcrmAddr + "-" + self.Hashkey + "-" + self.Cointype + "-" + strconv.Itoa(workid) + msgtypesep + "rpc_confirm_dcrmaddr"
-    log.Debug("ConfirmAddrSendMsgToDcrm.Run","send data",ss)
-    p2pdcrm.SendToDcrmGroup(ss)
-    //data := <-w.dcrmret
-    data,cherr := GetChannelValue(ch_t,w.dcrmret)
+    prex := cur_enode + "-" + "ConfirmAddr" + "-" + self.Txhash
+    types.SetDcrmRpcWorkersData(prex,strconv.Itoa(workid))
+    msg := prex + sep + self.Txhash + sep + self.Tx + sep + self.FusionAddr + sep + self.DcrmAddr + sep + self.Hashkey + sep + self.Cointype + msgtypesep + "rpc_confirm_dcrmaddr"
+    types.SetDcrmRpcMsgData(prex,msg)
+    log.Debug("ConfirmAddrSendMsgToDcrm.Run","broatcast rpc msg",msg)
+    p2pdcrm.Broatcast(msg)
+
+    go func(s string) {
+	 time.Sleep(time.Duration(200)*time.Second) //1000 == 1s
+	 types.DeleteDcrmRpcMsgData(s)
+	 types.DeleteDcrmRpcWorkersData(s)
+	 types.DeleteDcrmRpcResData(s)
+    }(prex)
+   
+    var data string
+    var cherr error
+    if !IsInGroup() {
+	w := non_dcrm_workers[workid]
+	data,cherr = GetChannelValue(ch_t,w.dcrmret)
+    } else {
+	dcrm_confirmaddr(prex,self.Txhash,self.Tx,self.FusionAddr,self.DcrmAddr,self.Hashkey,self.Cointype,ch)
+	data2,cherr2 := GetChannelValue(ch_t,ch)
+	if cherr2 != nil {
+	    data = "fail"
+	    cherr = nil
+	} else {
+	    data = data2
+	    cherr = nil
+	}
+    }
+
     if cherr != nil {
 	log.Debug("get w.dcrmret timeout.")
 	var ret2 Err
@@ -1864,30 +1955,19 @@ func (self *ConfirmAddrSendMsgToDcrm) Run(workid int,ch chan interface{}) bool {
 	ch <- res
 	return false
     }
-    log.Debug("ConfirmAddrSendMsgToDcrm.Run","dcrm return data",data)
+    log.Debug("ConfirmAddrSendMsgToDcrm.Run","dcrm return result",data)
 
-    //data := fmt.Sprintf("%s",result)
-    mm := strings.Split(data,msgtypesep)
-    if len(mm) == 2 && mm[1] == "rpc_confirm_dcrmaddr_res" {
-	tmps := strings.Split(mm[0],"-")
-	if cur_enode == tmps[0] {
-	    if tmps[2] == "fail" {
-	    log.Debug("ConfirmAddrSendMsgToDcrm.Run,fail")
-		var ret2 Err
-		ret2.info = tmps[3] 
-		res := RpcDcrmRes{ret:"",err:ret2}
-		ch <- res
-	    }
-	    
-	    if tmps[2] != "fail" {
-	    log.Debug("ConfirmAddrSendMsgToDcrm.Run,success.")
-		res := RpcDcrmRes{ret:"true",err:nil}
-		ch <- res
-	    }
-	}
+    if data == "fail" {
+	log.Debug("confirm dcrm addr fail.")
+	var ret2 Err
+	ret2.info = "confirm dcrm addr fail." 
+	res := RpcDcrmRes{ret:"",err:ret2}
+	ch <- res
+	return false
     }
-		    
-    log.Debug("ConfirmAddrSendMsgToDcrm.Run,return true.")
+    
+    res := RpcDcrmRes{ret:data,err:nil}
+    ch <- res
     return true
 }
 
@@ -1902,16 +1982,41 @@ func (self *ReqAddrSendMsgToDcrm) Run(workid int,ch chan interface{}) bool {
 	return false
     }
 
+    one,_ := new(big.Int).SetString("1",10)
+    rpcs = new(big.Int).Add(rpcs,one)
+    tips := fmt.Sprintf("%v",rpcs)
     GetEnodesInfo()
-    w := non_dcrm_workers[workid]
-    
-    //ss:  enode-txhash-tx-fusion-pub-coin-wid||rpc_req_dcrmaddr
-    ss := cur_enode + "-" + self.Fusionaddr + "-" + self.Pub + "-" + self.Cointype + "-" + strconv.Itoa(workid) + msgtypesep + "rpc_req_dcrmaddr"
-    
-    log.Debug("ReqAddrSendMsgToDcrm.Run","send data",ss)
-    p2pdcrm.SendToDcrmGroup(ss)
-    //data := <-w.dcrmret
-    data,cherr := GetChannelValue(ch_t,w.dcrmret)
+    prex := cur_enode + "-" + "ReqAddr" + "-" + tips
+    types.SetDcrmRpcWorkersData(prex,strconv.Itoa(workid))
+    msg := prex + sep + self.Fusionaddr + sep + self.Pub + sep + self.Cointype + msgtypesep + "rpc_req_dcrmaddr"
+    types.SetDcrmRpcMsgData(prex,msg)
+    log.Debug("ReqAddrSendMsgToDcrm.Run","broatcast rpc msg",msg)
+    p2pdcrm.Broatcast(msg)
+
+    go func(s string) {
+	 time.Sleep(time.Duration(200)*time.Second) //1000 == 1s
+	 types.DeleteDcrmRpcMsgData(s)
+	 types.DeleteDcrmRpcWorkersData(s)
+	 types.DeleteDcrmRpcResData(s)
+    }(prex)
+   
+    var data string
+    var cherr error
+    if !IsInGroup() {
+	w := non_dcrm_workers[workid]
+	data,cherr = GetChannelValue(ch_t,w.dcrmret)
+    } else {
+	dcrm_liloreqAddress(prex,self.Fusionaddr,self.Pub,self.Cointype,ch)
+	data2,cherr2 := GetChannelValue(ch_t,ch)
+	if cherr2 != nil {
+	    data = "fail"
+	    cherr = nil
+	} else {
+	    data = data2
+	    cherr = nil
+	}
+    }
+
     if cherr != nil {
 	log.Debug("get w.dcrmret timeout.")
 	var ret2 Err
@@ -1920,35 +2025,19 @@ func (self *ReqAddrSendMsgToDcrm) Run(workid int,ch chan interface{}) bool {
 	ch <- res
 	return false
     }
-    log.Debug("ReqAddrSendMsgToDcrm.Run","dcrm return data",data)
-    
-    mm := strings.Split(data,msgtypesep)
-    if len(mm) == 2 && mm[1] == "rpc_req_dcrmaddr_res" {
-//	log.Debug("ReqAddrSendMsgToDcrm.Run,rpc_req_dcrmaddr_res")
-	tmps := strings.Split(mm[0],"-")
-	if cur_enode == tmps[0] {
-//	    log.Debug("========ReqAddrSendMsgToDcrm.Run,it is self.=========")
-	    if tmps[2] == "fail" {
-//		log.Debug("==========ReqAddrSendMsgToDcrm.Run,req addr fail========")
-		var ret2 Err
-		ret2.info = tmps[3] 
-		res := RpcDcrmRes{ret:"",err:ret2}
-		ch <- res
-	    }
-	    
-	    if tmps[2] != "fail" {
-//		log.Debug("ReqAddrSendMsgToDcrm.Run,req addr success","addr",tmps[2])
-		res := RpcDcrmRes{ret:tmps[2],err:nil}
-		ch <- res
-	    }
-	} else {
-//		log.Debug("======ReqAddrSendMsgToDcrm.Run,it is not self.=========")
-		res := RpcDcrmRes{ret:"",err:errors.New("req addr fail,it is not self.")}
-		ch <- res
-	}
+    log.Debug("ReqAddrSendMsgToDcrm.Run","dcrm return result",data)
+
+    if data == "fail" {
+	log.Debug("req dcrm addr fail.")
+	var ret2 Err
+	ret2.info = "req dcrm addr fail." 
+	res := RpcDcrmRes{ret:"",err:ret2}
+	ch <- res
+	return false
     }
-		    
-  //  log.Debug("========ReqAddrSendMsgToDcrm.Run finish.==========")
+    
+    res := RpcDcrmRes{ret:data,err:nil}
+    ch <- res
     return true
 }
 
@@ -2224,6 +2313,22 @@ func (w RpcReqNonDcrmWorker) Stop() {
 ///////dcrm/////////
 
 func getworkerid(msgprex string,enode string) int {//fun-e-xx-i-enode1-j-enode2-k
+    
+    prexs := strings.Split(msgprex,"-")
+    if len(prexs) < 3 {
+	return -1
+    }
+
+    s := prexs[:3]
+    prex := strings.Join(s,"-")
+    wid,exsit := types.GetDcrmRpcWorkersDataKReady(prex)
+    if exsit == false {
+	return -1
+    }
+
+    id,_ := strconv.Atoi(wid)
+    return id
+
     msgs := strings.Split(msgprex,"-")
     for k,ens := range msgs {
 	if ens == enode && k != 1 {
@@ -2561,6 +2666,7 @@ func init(){
 	BTC_BLOCK_CONFIRMS = 1
 	BTC_DEFAULT_FEE = 0.0005
 	ETH_DEFAULT_FEE,_ = new(big.Int).SetString("10000000000000000",10)
+	rpcs,_ = new(big.Int).SetString("0",10)
 }
 
 func InitP2pParams() {
@@ -3649,22 +3755,22 @@ type SendRawTxRes struct {
 
 func IsInGroup() bool {
     cnt,enode := p2pdcrm.GetGroup()
-    log.Debug("=============IsInGroup,", "cnt", cnt, "enode", enode,"","==============")
+    //log.Debug("=============IsInGroup,", "cnt", cnt, "enode", enode,"","==============")
     if cnt <= 0 || enode == "" {
 	return false
     }
 
-    log.Debug("================IsInGroup start================")
+    //log.Debug("================IsInGroup start================")
     nodes := strings.Split(enode,sep2)
     for _,node := range nodes {
 	node2, _ := discover.ParseNode(node)
-	log.Debug("=============IsInGroup,", "node",node, "node2",node2,"cur_enode",cur_enode,"node2.ID.String()",node2.ID.String(),"","==============")
+	//log.Debug("=============IsInGroup,", "node",node, "node2",node2,"cur_enode",cur_enode,"node2.ID.String()",node2.ID.String(),"","==============")
 	if node2.ID.String() == cur_enode {
 	    return true
 	}
     }
 
-    log.Debug("================IsInGroup end================")
+    //log.Debug("================IsInGroup end================")
     return false
 }
 
@@ -3861,6 +3967,16 @@ func Validate_Txhash(wr WorkReq) (string,error) {
 		    }
 
 		    log.Debug("=========================!!!Start!!!=======================")
+
+		    _,exsit := types.GetDcrmRpcWorkersDataKReady(msgprex)
+		    if exsit == false {
+			log.Debug("============dcrm_liloreqAddress,get worker id fail.================")
+			var ret2 Err
+			ret2.info = "get worker id fail."
+			res := RpcDcrmRes{ret:"",err:ret2}
+			ch <- res
+			return
+		    }
 
 		    id := getworkerid(msgprex,cur_enode)
 		    ok := KeyGenerate_ec2(msgprex,ch,id)
@@ -4339,6 +4455,124 @@ func Validate_Txhash(wr WorkReq) (string,error) {
 		    if len(mm) >= 2 {
 			receiveSplitKey(msg)
 			return
+		    }
+
+		    mm = strings.Split(msg,msgtypesep)
+		    if len(mm) == 2 {
+			if mm[1] == "rpc_req_dcrmaddr" {
+			    mmm := strings.Split(mm[0],sep)
+			    prex := mmm[0]
+			    _,ok := types.GetDcrmRpcMsgDataKReady(prex)
+			    if ok {
+				return
+			    }
+			    
+			    types.SetDcrmRpcMsgData(prex,msg)
+			    log.Debug("SetUpMsgList","broatcast rpc msg",msg)
+			    p2pdcrm.Broatcast(msg)
+			    if !IsInGroup() {
+				go func(s string) {
+				     time.Sleep(time.Duration(200)*time.Second) //1000 == 1s
+				     types.DeleteDcrmRpcMsgData(s)
+				     types.DeleteDcrmRpcWorkersData(s)
+				     types.DeleteDcrmRpcResData(s)
+				}(prex)
+				return
+			    }
+			}
+			if mm[1] == "rpc_req_dcrmaddr_res" {
+			    mmm := strings.Split(mm[0],sep)
+			    prex := mmm[0]
+			    _,ok := types.GetDcrmRpcResDataKReady(prex)
+			    if ok {
+				return
+			    }
+			    types.SetDcrmRpcResData(prex,msg)
+			    log.Debug("SetUpMsgList","broatcast rpc res msg",msg)
+			    p2pdcrm.Broatcast(msg)
+			    prexs := strings.Split(prex,"-")
+			    if prexs[0] == cur_enode {
+				wid,ok := types.GetDcrmRpcWorkersDataKReady(prex)
+				if ok {
+				    if IsInGroup() {
+					//id,_ := strconv.Atoi(wid)
+					//w := workers[id]
+					//w.dcrmret <-mmm[1]
+				    } else {
+					id,_ := strconv.Atoi(wid)
+					w := non_dcrm_workers[id]
+					w.dcrmret <-mmm[1]
+				    }
+				}
+			    }
+
+			    go func(s string) {
+				 time.Sleep(time.Duration(200)*time.Second) //1000 == 1s
+				 types.DeleteDcrmRpcMsgData(s)
+				 types.DeleteDcrmRpcWorkersData(s)
+				 types.DeleteDcrmRpcResData(s)
+			    }(prex)
+			    
+			    return
+			}
+
+			//confirm
+			if mm[1] == "rpc_confirm_dcrmaddr" {
+			    mmm := strings.Split(mm[0],sep)
+			    prex := mmm[0]
+			    _,ok := types.GetDcrmRpcMsgDataKReady(prex)
+			    if ok {
+				return
+			    }
+			    
+			    types.SetDcrmRpcMsgData(prex,msg)
+			    log.Debug("SetUpMsgList","broatcast rpc msg",msg)
+			    p2pdcrm.Broatcast(msg)
+			    if !IsInGroup() {
+				go func(s string) {
+				     time.Sleep(time.Duration(200)*time.Second) //1000 == 1s
+				     types.DeleteDcrmRpcMsgData(s)
+				     types.DeleteDcrmRpcWorkersData(s)
+				     types.DeleteDcrmRpcResData(s)
+				}(prex)
+				return
+			    }
+			}
+			if mm[1] == "rpc_confirm_dcrmaddr_res" {
+			    mmm := strings.Split(mm[0],sep)
+			    prex := mmm[0]
+			    _,ok := types.GetDcrmRpcResDataKReady(prex)
+			    if ok {
+				return
+			    }
+			    types.SetDcrmRpcResData(prex,msg)
+			    log.Debug("SetUpMsgList","broatcast rpc res msg",msg)
+			    p2pdcrm.Broatcast(msg)
+			    prexs := strings.Split(prex,"-")
+			    if prexs[0] == cur_enode {
+				wid,ok := types.GetDcrmRpcWorkersDataKReady(prex)
+				if ok {
+				    if IsInGroup() {
+					//id,_ := strconv.Atoi(wid)
+					//w := workers[id]
+					//w.dcrmret <-mmm[1]
+				    } else {
+					id,_ := strconv.Atoi(wid)
+					w := non_dcrm_workers[id]
+					w.dcrmret <-mmm[1]
+				    }
+				}
+			    }
+
+			    go func(s string) {
+				 time.Sleep(time.Duration(200)*time.Second) //1000 == 1s
+				 types.DeleteDcrmRpcMsgData(s)
+				 types.DeleteDcrmRpcWorkersData(s)
+				 types.DeleteDcrmRpcResData(s)
+			    }(prex)
+			    
+			    return
+			}
 		    }
 
 		    v := RecvMsg{msg:msg}
