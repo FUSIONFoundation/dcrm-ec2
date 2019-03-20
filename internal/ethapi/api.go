@@ -508,38 +508,6 @@ func NewPublicFsnAPI(b Backend) *PublicFsnAPI {
 }
 
 //+++++++++++++++++caihaijun+++++++++++++++++++
-
-//3.0 api
-func (s *PublicFsnAPI) DcrmReqAddress(ctx context.Context,pubkey string,cointype string) (string, error) {
-    log.Debug("================DcrmReqAddress================")
-    v := dcrm.DcrmReqAddress{Pub:pubkey,Cointype:cointype}
-    //addr,err := dcrm.Dcrm_ReqAddress(pubkey,cointype)
-    addr,err := dcrm.Dcrm_ReqAddress(&v)
-    log.Debug("DcrmReqAddress","ret",addr)
-    return addr,err
-}
-
-func (s *PublicFsnAPI) DcrmSign(ctx context.Context,sig string,txhash string,dcrmaddr string,cointype string) (string, error) {
-    log.Debug("================DcrmSign================")
-    v := dcrm.DcrmSign{Sig:sig,Txhash:txhash,DcrmAddr:dcrmaddr,Cointype:cointype}
-    sign,err := dcrm.Dcrm_Sign(&v)
-    log.Debug("DcrmSign","ret",sign)
-    return sign,err
-}
-
-func (s *PublicFsnAPI) DcrmNodeInfo(ctx context.Context) (string, error) {
-    log.Debug("================DcrmNodeInfo================")
-    info,err := dcrm.Dcrm_NodeInfo()
-    return info,err
-}
-
-func (s *PublicFsnAPI) DcrmGetAccountList(ctx context.Context,pubkey string) (string, error) {
-    log.Debug("================DcrmGetAccountList===============")
-    accountlist,err := dcrm.Dcrm_GetAccountList(pubkey)
-    return accountlist,err
-}
-
-//==========================================
 type DcrmAddrRes struct {
     FusionAccount string
     DcrmAddr string
