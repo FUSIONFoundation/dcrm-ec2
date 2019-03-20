@@ -1225,6 +1225,130 @@ func (self *RecvMsg) Run(workid int,ch chan interface{}) bool {
 	return true 
     }
 
+    if msgCode == "rpc_lockin" {
+	mmm := strings.Split(mm[0],sep)
+	prex := mmm[0]
+	types.SetDcrmRpcWorkersData(prex,strconv.Itoa(workid))
+	validate_txhash(prex,mmm[2],mmm[7],mmm[4],mmm[8],ch)
+	ret,cherr := GetChannelValue(ch_t,ch)
+	if cherr != nil {
+	    log.Debug(cherr.Error())
+	    msg := prex + sep + "fail" + msgtypesep + "rpc_lockin_res"
+	    types.SetDcrmRpcResData(prex,msg)
+	    p2pdcrm.Broatcast(msg)
+	    go func(s string) {
+		 time.Sleep(time.Duration(200)*time.Second) //1000 == 1s
+		 types.DeleteDcrmRpcMsgData(s)
+		 types.DeleteDcrmRpcWorkersData(s)
+		 types.DeleteDcrmRpcResData(s)
+	    }(prex)
+	    return false
+	}
+	msg := prex + sep + ret + msgtypesep + "rpc_lockin_res"
+	types.SetDcrmRpcResData(prex,msg)
+	p2pdcrm.Broatcast(msg)
+	go func(s string) {
+	     time.Sleep(time.Duration(200)*time.Second) //1000 == 1s
+	     types.DeleteDcrmRpcMsgData(s)
+	     types.DeleteDcrmRpcWorkersData(s)
+	     types.DeleteDcrmRpcResData(s)
+	}(prex)
+	return true 
+    }
+
+    if msgCode == "rpc_lockout" {
+	log.Debug("============RecvMsg.Run,msgCode == rpc_lockout===========")
+	mmm := strings.Split(mm[0],sep)
+	prex := mmm[0]
+	types.SetDcrmRpcWorkersData(prex,strconv.Itoa(workid))
+
+	//bug
+	val,ok := GetLockoutInfoFromLocalDB(mmm[1])
+	if ok == nil && val != "" {
+	    log.Debug("============RecvMsg.Run,msgCode == rpc_lockout1111111111.===========")
+	    types.SetDcrmValidateData(mmm[1],val)
+	    msg := prex + sep + val + msgtypesep + "rpc_lockout_res"
+	    types.SetDcrmRpcResData(prex,msg)
+	    p2pdcrm.Broatcast(msg)
+	    go func(s string) {
+		 time.Sleep(time.Duration(500)*time.Second) //1000 == 1s
+		 types.DeleteDcrmRpcMsgData(s)
+		 types.DeleteDcrmRpcWorkersData(s)
+		 types.DeleteDcrmRpcResData(s)
+	    }(prex)
+	    return true
+	}
+	//
+	realfusionfrom,realdcrmfrom,err := ChooseRealFusionAccountForLockout(mmm[8],mmm[7],mmm[9])
+	if err != nil {
+	    log.Debug("============get real fusion/dcrm from fail.===========")
+	    msg := prex + sep + "fail" + msgtypesep + "rpc_lockout_res"
+	    types.SetDcrmRpcResData(prex,msg)
+	    p2pdcrm.Broatcast(msg)
+	    go func(s string) {
+		 time.Sleep(time.Duration(500)*time.Second) //1000 == 1s
+		 types.DeleteDcrmRpcMsgData(s)
+		 types.DeleteDcrmRpcWorkersData(s)
+		 types.DeleteDcrmRpcResData(s)
+	    }(prex)
+	    return false
+	}
+
+	if IsValidFusionAddr(realfusionfrom) == false {
+	    log.Debug("============validate real fusion from fail.===========")
+	    msg := prex + sep + "fail" + msgtypesep + "rpc_lockout_res"
+	    types.SetDcrmRpcResData(prex,msg)
+	    p2pdcrm.Broatcast(msg)
+	    go func(s string) {
+		 time.Sleep(time.Duration(500)*time.Second) //1000 == 1s
+		 types.DeleteDcrmRpcMsgData(s)
+		 types.DeleteDcrmRpcWorkersData(s)
+		 types.DeleteDcrmRpcResData(s)
+	    }(prex)
+	    return false
+	}
+	if IsValidDcrmAddr(realdcrmfrom,mmm[9]) == false {
+	    log.Debug("============validate real dcrm from fail.===========")
+	    msg := prex + sep + "fail" + msgtypesep + "rpc_lockout_res"
+	    types.SetDcrmRpcResData(prex,msg)
+	    p2pdcrm.Broatcast(msg)
+	    go func(s string) {
+		 time.Sleep(time.Duration(500)*time.Second) //1000 == 1s
+		 types.DeleteDcrmRpcMsgData(s)
+		 types.DeleteDcrmRpcWorkersData(s)
+		 types.DeleteDcrmRpcResData(s)
+	    }(prex)
+	    return false
+	}
+
+	validate_lockout(prex,mmm[1],mmm[2],mmm[3],mmm[4],realfusionfrom,realdcrmfrom,mmm[7],mmm[8],mmm[9],ch)
+	ret,cherr := GetChannelValue(ch_t,ch)
+	if cherr != nil {
+	    log.Debug("============RecvMsg.Run,msgCode == rpc_lockout222222222.===========")
+	    log.Debug(cherr.Error())
+	    msg := prex + sep + "fail" + msgtypesep + "rpc_lockout_res"
+	    types.SetDcrmRpcResData(prex,msg)
+	    p2pdcrm.Broatcast(msg)
+	    go func(s string) {
+		 time.Sleep(time.Duration(500)*time.Second) //1000 == 1s
+		 types.DeleteDcrmRpcMsgData(s)
+		 types.DeleteDcrmRpcWorkersData(s)
+		 types.DeleteDcrmRpcResData(s)
+	    }(prex)
+	    return false
+	}
+	msg := prex + sep + ret + msgtypesep + "rpc_lockout_res"
+	types.SetDcrmRpcResData(prex,msg)
+	p2pdcrm.Broatcast(msg)
+	go func(s string) {
+	     time.Sleep(time.Duration(500)*time.Second) //1000 == 1s
+	     types.DeleteDcrmRpcMsgData(s)
+	     types.DeleteDcrmRpcWorkersData(s)
+	     types.DeleteDcrmRpcResData(s)
+	}(prex)
+	return true 
+    }
+
     if msgCode == "startdcrm" {
 	GetEnodesInfo()
 	msgs := mm[0] + "-" + cur_enode + "-" + strconv.Itoa(w.id) + msgtypesep + "syncworkerid"
@@ -1448,7 +1572,7 @@ func (self *RecvMsg) Run(workid int,ch chan interface{}) bool {
     if msgCode == "realstartdcrm" {
 	GetEnodesInfo()
 	sh := mm[0]
-	//log.Debug("=============","RecvMsg.Run,real start dcrm msg",sh,"","=================")
+	log.Debug("=============","RecvMsg.Run,real start dcrm msg",sh,"","=================")
 	shs := strings.Split(sh, sep)
 	//log.Debug("=============","RecvMsg.Run,real start dcrm msg len",len(shs),"","=================")
 	id := getworkerid(shs[0],cur_enode)
@@ -1513,7 +1637,7 @@ func (self *RecvMsg) Run(workid int,ch chan interface{}) bool {
     }
     
     if msgCode == "startvalidate" {
-	//log.Debug("========RecvMsg.Run,receiv startvalidate msg.============")
+	log.Debug("========RecvMsg.Run,receiv startvalidate msg.============")
 	GetEnodesInfo()
 	msgs := mm[0] + "-" + cur_enode + "-" + strconv.Itoa(w.id) + msgtypesep + "syncworkerid"
 	SendMsgToDcrmGroup(msgs)
@@ -1563,7 +1687,7 @@ func (self *RecvMsg) Run(workid int,ch chan interface{}) bool {
     }
 
     if msgCode == "realstartvalidate" {
-	//log.Debug("========RecvMsg.Run,receiv realstartvalidate msg.============")
+	log.Debug("========RecvMsg.Run,receiv realstartvalidate msg.============")
 	GetEnodesInfo()
 	sh := mm[0] 
 	shs := strings.Split(sh, sep)
@@ -1816,7 +1940,7 @@ func (self *DcrmLockin) Run(workid int,ch chan interface{}) bool {
 	return false
     }
 
-    //log.Debug("===============DcrmLockin.Run======================")
+    log.Debug("===============DcrmLockin.Run======================")
     GetEnodesInfo()
     w := workers[workid]
     ss := "Validate_Txhash" + "-" + cur_enode + "-" + "xxx" + "-" + strconv.Itoa(workid)
@@ -1840,7 +1964,7 @@ func (self *DcrmLockin) Run(workid int,ch chan interface{}) bool {
 	//ss = ss + "-" + ni.enode + "-" + strconv.Itoa(ni.workid)
     }
 
-    //log.Debug("===============DcrmLockin.Run,start call validate_txhash ======================")
+    log.Debug("===============DcrmLockin.Run,start call validate_txhash ======================")
     sss := ss + sep + self.Tx + sep + self.LockinAddr + sep + self.Hashkey + sep + self.RealDcrmFrom
     sss = sss + msgtypesep + "realstartvalidate"
     SendMsgToDcrmGroup(sss)
@@ -2059,41 +2183,58 @@ func (self *LockInSendMsgToDcrm) Run(workid int,ch chan interface{}) bool {
     }
 
     GetEnodesInfo()
-    w := non_dcrm_workers[workid]
+    prex := cur_enode + "-" + "LockIn" + "-" + self.Txhash
+    types.SetDcrmRpcWorkersData(prex,strconv.Itoa(workid))
+    msg := prex + sep + self.Txhash + sep + self.Tx + sep + self.Fusionaddr + sep + self.Hashkey + sep + self.Value + sep + self.Cointype + sep + self.LockinAddr + sep + self.RealDcrmFrom + msgtypesep + "rpc_lockin"
+    types.SetDcrmRpcMsgData(prex,msg)
+    log.Debug("LockInSendMsgToDcrm.Run","broacast rpc msg",msg)
+    p2pdcrm.Broatcast(msg)
+
+    go func(s string) {
+	 time.Sleep(time.Duration(200)*time.Second) //1000 == 1s
+	 types.DeleteDcrmRpcMsgData(s)
+	 types.DeleteDcrmRpcWorkersData(s)
+	 types.DeleteDcrmRpcResData(s)
+    }(prex)
+   
+    var data string
+    var cherr error
+    if !IsInGroup() {
+	w := non_dcrm_workers[workid]
+	data,cherr = GetChannelValue(ch_t,w.dcrmret)
+    } else {
+	validate_txhash(prex,self.Tx,self.LockinAddr,self.Hashkey,self.RealDcrmFrom,ch)
+	data2,cherr2 := GetChannelValue(ch_t,ch)
+	if cherr2 != nil {
+	    data = "fail"
+	    cherr = nil
+	} else {
+	    data = data2
+	    cherr = nil
+	}
+    }
     
-    ss := cur_enode + "-" + self.Txhash + "-" + self.Tx + "-" + self.Fusionaddr + "-" + self.Hashkey + "-" + self.Value + "-" + self.Cointype + "-" + self.LockinAddr + "-" + self.RealDcrmFrom + "-" + strconv.Itoa(workid) + msgtypesep + "rpc_lockin"
-    log.Debug("LockInSendMsgToDcrm.Run","send data",ss)
-    p2pdcrm.SendToDcrmGroup(ss)
-    //data := <-w.dcrmret
-    data,cherr := GetChannelValue(ch_t,w.dcrmret)
     if cherr != nil {
 	log.Debug("get w.dcrmret timeout.")
 	var ret2 Err
-	ret2.info = "get dcrm return result timeout."
+	ret2.info = "get dcrm return result timeout." 
 	res := RpcDcrmRes{ret:"",err:ret2}
 	ch <- res
 	return false
     }
-    log.Debug("LockInSendMsgToDcrm.Run","dcrm return data",data)
-    
-    mm := strings.Split(data,msgtypesep)
-    if len(mm) == 2 && mm[1] == "rpc_lockin_res" {
-	tmps := strings.Split(mm[0],"-")
-	if cur_enode == tmps[0] {
-	    if tmps[2] == "fail" {
-		var ret2 Err
-		ret2.info = tmps[3] 
-		res := RpcDcrmRes{ret:"",err:ret2}
-		ch <- res
-	    }
-	    
-	    if tmps[2] == "true" {
-		res := RpcDcrmRes{ret:tmps[2],err:nil}
-		ch <- res
-	    }
-	}
-    }
+    log.Debug("LockInSendMsgToDcrm.Run","dcrm return result",data)
 
+    if data == "fail" {
+	log.Debug("dcrm lockin fail.")
+	var ret2 Err
+	ret2.info = "dcrm lockin fail." 
+	res := RpcDcrmRes{ret:"",err:ret2}
+	ch <- res
+	return false
+    }
+    
+    res := RpcDcrmRes{ret:data,err:nil}
+    ch <- res
     return true
 }
 
@@ -2116,42 +2257,59 @@ func (self *LockoutSendMsgToDcrm) Run(workid int,ch chan interface{}) bool {
     }
 
     GetEnodesInfo()
-    w := non_dcrm_workers[workid]
+    prex := cur_enode + "-" + "LockOut" + "-" + self.Txhash
+    types.SetDcrmRpcWorkersData(prex,strconv.Itoa(workid))
+    msg := prex + sep + self.Txhash + sep + self.Tx + sep + self.FusionFrom + sep + self.DcrmFrom + sep + self.RealFusionFrom + sep + self.RealDcrmFrom + sep + self.Lockoutto + sep + self.Value + sep + self.Cointype + msgtypesep + "rpc_lockout"
+    log.Debug("LockOutSendMsgToDcrm.Run","prex",prex)
+    types.SetDcrmRpcMsgData(prex,msg)
+    log.Debug("LockOutSendMsgToDcrm.Run","broacast rpc msg",msg)
+    p2pdcrm.Broatcast(msg)
+
+    go func(s string) {
+	 time.Sleep(time.Duration(500)*time.Second) //1000 == 1s
+	 types.DeleteDcrmRpcMsgData(s)
+	 types.DeleteDcrmRpcWorkersData(s)
+	 types.DeleteDcrmRpcResData(s)
+    }(prex)
+   
+    var data string
+    var cherr error
+    if !IsInGroup() {
+	w := non_dcrm_workers[workid]
+	data,cherr = GetChannelValue(ch_t,w.dcrmret)
+    } else {
+	validate_lockout(prex,self.Txhash,self.Tx,self.FusionFrom,self.DcrmFrom,self.RealFusionFrom,self.RealDcrmFrom,self.Lockoutto,self.Value,self.Cointype,ch)
+	data2,cherr2 := GetChannelValue(ch_t,ch)
+	if cherr2 != nil {
+	    data = "fail"
+	    cherr = nil
+	} else {
+	    data = data2
+	    cherr = nil
+	}
+    }
     
-    ss := cur_enode + "-" + self.Txhash + "-" + self.Tx + "-" + self.FusionFrom + "-" + self.DcrmFrom + "-" + self.RealFusionFrom + "-" + self.RealDcrmFrom + "-" + self.Lockoutto + "-" + self.Value + "-" + self.Cointype + "-" + strconv.Itoa(workid) + msgtypesep + "rpc_lockout"
-    log.Debug("==========LockoutSendMsgToDcrm.run,","send data",ss,"","===============")
-    p2pdcrm.SendToDcrmGroup(ss)
-    //data := <-w.dcrmret
-    data,cherr := GetChannelValue(360,w.dcrmret)
     if cherr != nil {
 	log.Debug("get w.dcrmret timeout.")
 	var ret2 Err
-	ret2.info = "get dcrm return result timeout."
+	ret2.info = "get dcrm return result timeout." 
 	res := RpcDcrmRes{ret:"",err:ret2}
 	ch <- res
 	return false
     }
-    log.Debug("==========LockoutSendMsgToDcrm.run,","receiv data",data,"","===============")
-    mm := strings.Split(data,msgtypesep)
-    if len(mm) == 2 && mm[1] == "rpc_lockout_res" {
-	    tmps := strings.Split(mm[0],"-")
-	    if cur_enode == tmps[0] {
-		if tmps[2] == "fail" {
-		log.Debug("==========LockoutSendMsgToDcrm.run,fail.===============")
-		var ret2 Err
-		ret2.info = tmps[3] 
-		res := RpcDcrmRes{ret:"",err:ret2}
-		ch <- res
-	    }
+    log.Debug("LockOutSendMsgToDcrm.Run","dcrm return result",data)
 
-	    if tmps[2] != "fail" {
-		log.Debug("==========LockoutSendMsgToDcrm.run,success.===============")
-		res := RpcDcrmRes{ret:tmps[2],err:nil}
-		ch <- res
-	    }
-	}
+    if data == "fail" {
+	log.Debug("dcrm lockout fail.")
+	var ret2 Err
+	ret2.info = "dcrm lockout fail." 
+	res := RpcDcrmRes{ret:"",err:ret2}
+	ch <- res
+	return false
     }
-
+    
+    res := RpcDcrmRes{ret:data,err:nil}
+    ch <- res
     return true
 }
 
@@ -4566,6 +4724,125 @@ func Validate_Txhash(wr WorkReq) (string,error) {
 
 			    go func(s string) {
 				 time.Sleep(time.Duration(200)*time.Second) //1000 == 1s
+				 types.DeleteDcrmRpcMsgData(s)
+				 types.DeleteDcrmRpcWorkersData(s)
+				 types.DeleteDcrmRpcResData(s)
+			    }(prex)
+			    
+			    return
+			}
+
+			//lockin
+			if mm[1] == "rpc_lockin" {
+			    mmm := strings.Split(mm[0],sep)
+			    prex := mmm[0]
+			    _,ok := types.GetDcrmRpcMsgDataKReady(prex)
+			    if ok {
+				return
+			    }
+			    
+			    types.SetDcrmRpcMsgData(prex,msg)
+			    log.Debug("SetUpMsgList","broatcast rpc msg",msg)
+			    p2pdcrm.Broatcast(msg)
+			    if !IsInGroup() {
+				go func(s string) {
+				     time.Sleep(time.Duration(200)*time.Second) //1000 == 1s
+				     types.DeleteDcrmRpcMsgData(s)
+				     types.DeleteDcrmRpcWorkersData(s)
+				     types.DeleteDcrmRpcResData(s)
+				}(prex)
+				return
+			    }
+			}
+			if mm[1] == "rpc_lockin_res" {
+			    mmm := strings.Split(mm[0],sep)
+			    prex := mmm[0]
+			    _,ok := types.GetDcrmRpcResDataKReady(prex)
+			    if ok {
+				return
+			    }
+			    types.SetDcrmRpcResData(prex,msg)
+			    log.Debug("SetUpMsgList","broatcast rpc res msg",msg)
+			    p2pdcrm.Broatcast(msg)
+			    prexs := strings.Split(prex,"-")
+			    if prexs[0] == cur_enode {
+				wid,ok := types.GetDcrmRpcWorkersDataKReady(prex)
+				if ok {
+				    if IsInGroup() {
+					//id,_ := strconv.Atoi(wid)
+					//w := workers[id]
+					//w.dcrmret <-mmm[1]
+				    } else {
+					id,_ := strconv.Atoi(wid)
+					w := non_dcrm_workers[id]
+					w.dcrmret <-mmm[1]
+				    }
+				}
+			    }
+
+			    go func(s string) {
+				 time.Sleep(time.Duration(200)*time.Second) //1000 == 1s
+				 types.DeleteDcrmRpcMsgData(s)
+				 types.DeleteDcrmRpcWorkersData(s)
+				 types.DeleteDcrmRpcResData(s)
+			    }(prex)
+			    
+			    return
+			}
+
+			//lockout
+			if mm[1] == "rpc_lockout" {
+			    mmm := strings.Split(mm[0],sep)
+			    prex := mmm[0]
+			    val,ok := types.GetDcrmRpcMsgDataKReady(prex)
+			    log.Debug("SetUpMsgList","prex",prex)
+			    log.Debug("SetUpMsgList","val",val)
+			    if ok {
+				return
+			    }
+			    
+			    types.SetDcrmRpcMsgData(prex,msg)
+			    log.Debug("SetUpMsgList","broatcast rpc msg",msg)
+			    p2pdcrm.Broatcast(msg)
+			    if !IsInGroup() {
+				log.Debug("========SetUpMsgList,it is not in group.===================")
+				go func(s string) {
+				     time.Sleep(time.Duration(500)*time.Second) //1000 == 1s
+				     types.DeleteDcrmRpcMsgData(s)
+				     types.DeleteDcrmRpcWorkersData(s)
+				     types.DeleteDcrmRpcResData(s)
+				}(prex)
+				return
+			    }
+			}
+			if mm[1] == "rpc_lockout_res" {
+			    mmm := strings.Split(mm[0],sep)
+			    prex := mmm[0]
+			    _,ok := types.GetDcrmRpcResDataKReady(prex)
+			    if ok {
+				return
+			    }
+			    types.SetDcrmRpcResData(prex,msg)
+			    log.Debug("SetUpMsgList","broatcast rpc res msg",msg)
+			    p2pdcrm.Broatcast(msg)
+			    prexs := strings.Split(prex,"-")
+			    if prexs[0] == cur_enode {
+				wid,ok := types.GetDcrmRpcWorkersDataKReady(prex)
+				if ok {
+				    if IsInGroup() {
+					//id,_ := strconv.Atoi(wid)
+					//w := workers[id]
+					//w.dcrmret <-mmm[1]
+				    } else {
+					id,_ := strconv.Atoi(wid)
+					w := non_dcrm_workers[id]
+					w.dcrmret <-mmm[1]
+				    }
+				}
+			    }
+
+			    go func(s string) {
+				 time.Sleep(time.Duration(500)*time.Second) //1000 == 1s
 				 types.DeleteDcrmRpcMsgData(s)
 				 types.DeleteDcrmRpcWorkersData(s)
 				 types.DeleteDcrmRpcResData(s)

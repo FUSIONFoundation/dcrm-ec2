@@ -723,24 +723,6 @@ func (pool *TxPool) checkTransaction(tx *types.Transaction) (bool,error) {
 	    return false,ErrInvalidSender
     }
 
-    /*dcrmfrom := pool.currentState.GetDcrmAddress(from,crypto.Keccak256Hash([]byte(strings.ToLower(cointype))),0)
-    if dcrmfrom == "" {
-	    return false,errors.New("the coinbase account has not request dcrm addr before.")
-    }
-
-    if dcrm.IsValidDcrmAddr(dcrmfrom,cointype) == false {
-	if strings.EqualFold(cointype,"ETH") == true || strings.EqualFold(cointype,"GUSD") == true || strings.EqualFold(cointype,"BNB") == true || strings.EqualFold(cointype,"MKR") == true || strings.EqualFold(cointype,"HT") == true || strings.EqualFold(cointype,"BNT") == true {
-	    return false,errors.New("ETH coinbase dcrm addr must start with 0x and len = 42.")
-	}
-	if strings.EqualFold(cointype,"BTC") == true {
-	    return false,errors.New("BTC coinbase dcrm addr is not the right format.")
-	}
-    }*/
-
-     //if dcrm.IsDcrmAddr(fusionto) {
-//	    return false,errors.New("the first param must be fusion account.")
-  //   }
-
     if dcrm.IsValidFusionAddr(fusionto) == false {
 	    return false,errors.New("param error.fusion addr must start with 0x and len = 42.")
     }
@@ -762,7 +744,6 @@ func (pool *TxPool) checkTransaction(tx *types.Transaction) (bool,error) {
 	 }
 
 	a := pool.currentState.GetBalance(from)
-	//log.Debug("===============checkTransaction,","coinbase balance",balance,"","=================")
 	if a.Cmp(dcrm.ETH_DEFAULT_FEE) < 0 {
 	    return false,errors.New("value is great than gfsn balance.")
 	}
@@ -919,49 +900,43 @@ func (pool *TxPool) validateLockout(tx *types.Transaction) (bool,error) {
 	dcrmfrom = "xxx"
     }
 
-    if !dcrm.IsInGroup() {
-	log.Debug("============txPool.validateLockout,is not in group.=================")
-	msg := tx.Hash().Hex() + sep9 + string(result) + sep9 + from.Hex() + sep9 + dcrmfrom + sep9 + "xxx" + sep9 + "xxx" + sep9 + lockoutto + sep9 + value + sep9 + cointype
-	retva,err := dcrm.SendReqToGroup(msg,"rpc_lockout")
-	if err != nil {
-	    log.Debug("=============validateLockout,send tx fail.==============")
-		return false, err
+    var msg string
+    if dcrm.IsInGroup() {
+	//bug
+	val,ok := dcrm.GetLockoutInfoFromLocalDB(tx.Hash().Hex())
+	if ok == nil && val != "" {
+	    types.SetDcrmValidateData(tx.Hash().Hex(),val)
+	    return true,nil
+	}
+	//
+
+	realfusionfrom,realdcrmfrom,err := dcrm.ChooseRealFusionAccountForLockout(value,lockoutto,cointype)
+	if err != nil || realfusionfrom == "" || realdcrmfrom == "" {
+	    return false,errors.New("there are no suitable account to lockout.")
+	}
+
+	log.Debug("===============validateLockout,","real dcrm from",realdcrmfrom,"","=================")
+
+	//real from
+	if dcrm.IsValidFusionAddr(realfusionfrom) == false {
+	    return false,errors.New("fail:there are no suitable account to lockout.")
+	}
+	if dcrm.IsValidDcrmAddr(realdcrmfrom,cointype) == false {
+	    return false,errors.New("fail:there are no suitable account to lockout.")
 	}
 	
-	log.Debug("============txPool.validateLockout,send tx success.=================")
-	types.SetDcrmValidateData(tx.Hash().Hex(),retva)//bug
-	return true,nil
+	msg = tx.Hash().Hex() + sep9 + string(result) + sep9 + from.Hex() + sep9 + dcrmfrom + sep9 + realfusionfrom + sep9 + realdcrmfrom + sep9 + lockoutto + sep9 + value + sep9 + cointype 
+    } else {
+	msg = tx.Hash().Hex() + sep9 + string(result) + sep9 + from.Hex() + sep9 + dcrmfrom + sep9 + "xxx" + sep9 + "xxx" + sep9 + lockoutto + sep9 + value + sep9 + cointype 
     }
 
-    //bug
-    val,ok := dcrm.GetLockoutInfoFromLocalDB(tx.Hash().Hex())
-    if ok == nil && val != "" {
-	types.SetDcrmValidateData(tx.Hash().Hex(),val)
-	return true,nil
-    }
-    //
-    
-    realfusionfrom,realdcrmfrom,err := dcrm.ChooseRealFusionAccountForLockout(value,lockoutto,cointype)
-    if err != nil || realfusionfrom == "" || realdcrmfrom == "" {
-	return false,errors.New("there are no suitable account to lockout.")
-    }
-
-    log.Debug("===============validateLockout,","real dcrm from",realdcrmfrom,"","=================")
-
-    //real from
-    if dcrm.IsValidFusionAddr(realfusionfrom) == false {
-	return false,errors.New("fail:there are no suitable account to lockout.")
-    }
-    if dcrm.IsValidDcrmAddr(realdcrmfrom,cointype) == false {
-	return false,errors.New("fail:there are no suitable account to lockout.")
-    }
-
-    v := dcrm.DcrmLockout{Txhash:tx.Hash().Hex(),Tx:string(result),FusionFrom:from.Hex(),DcrmFrom:dcrmfrom,RealFusionFrom:realfusionfrom,RealDcrmFrom:realdcrmfrom,Lockoutto:lockoutto,Value:value,Cointype:cointype}
-    retva,err := dcrm.Validate_Lockout(&v)
+    retva,err := dcrm.SendReqToGroup(msg,"rpc_lockout")
     if err != nil {
 	    log.Debug("=============validateLockout,send tx fail.==============")
 	    return false, err
     }
+    
+    log.Debug("============txPool.validateLockout,send tx success.=================")
 
     types.SetDcrmValidateData(tx.Hash().Hex(),retva)//bug
     return true,nil
@@ -1034,27 +1009,6 @@ func (pool *TxPool) checkLockin(tx *types.Transaction) (bool,error) {
     if txt,_,_,_ := rawdb.ReadTransaction(dcrm.ChainDb(), tmp); txt != nil {
 	return false,errors.New("error: the dcrmaddr has lockin already.")
     }
-    /*result,err := tx.MarshalJSON()
-    if !dcrm.IsInGroup() {
-	msg := tx.Hash().Hex() + sep9 + string(result) + sep9 + hashkey 
-	
-	_,err := dcrm.SendReqToGroup(msg,"rpc_check_hashkey")
-	if err != nil {
-	    return false, err
-	}
-	
-	return true,nil
-    }
-
-    has,err := dcrm.IsHashkeyExsitInLocalDB(hashkey)
-    if err != nil {
-	return false,err
-    }
-    if has == true {
-	return false,errors.New("error: the dcrmaddr has lockin already.")
-    }*/
-
-    ///////
 
     return true,nil
 }
@@ -1084,34 +1038,21 @@ func (pool *TxPool) ValidateLockin2(tx *types.Transaction,retva string) (bool,er
     }
 
     result,err := tx.MarshalJSON()
+    
+    msg := tx.Hash().Hex() + sep9 + string(result) + sep9 + from.Hex() + sep9 + hashkey + sep9 + value + sep9 + cointype + sep9 + inputs[1] + sep9 + realdcrmfrom
 
-    if !dcrm.IsInGroup() {
-	log.Debug("=============txPool.ValidateLockin2,is not in group.==============")
-	msg := tx.Hash().Hex() + sep9 + string(result) + sep9 + from.Hex() + sep9 + hashkey + sep9 + value + sep9 + cointype + sep9 + inputs[1] + sep9 + realdcrmfrom
-	
-	_,err := dcrm.SendReqToGroup(msg,"rpc_lockin")
-	if err != nil {
-	    log.Debug("=============txPool.ValidateLockin2,validate fail.==============")
-	    return false, err
-	}
-	
-	log.Debug("=============txPool.ValidateLockin2,validate success.==============")
-	return true,nil
+    _,err = dcrm.SendReqToGroup(msg,"rpc_lockin")
+    if err != nil {
+	log.Debug("=============txPool.ValidateLockin2,validate fail.==============")
+	return false, err
     }
-
-    log.Debug("=============txPool.ValidateLockin2,it is in group.==============")
-    v := dcrm.DcrmLockin{Tx:string(result),LockinAddr:inputs[1],Hashkey:hashkey,RealDcrmFrom:realdcrmfrom}
-    if _,err = dcrm.Validate_Txhash(&v);err != nil {
-	    log.Debug("=============txPool.ValidateLockin2,validate fail.==============")
-	    return false, err
-    }
-
+    
     log.Debug("=============txPool.ValidateLockin2,validate success.==============")
-    return true,nil 
+    return true,nil
 }
 
 func (pool *TxPool) ValidateLockin(tx *types.Transaction) (bool,error) {
-	log.Debug("==========ValidateLockin.=================")//caihaijun
+    log.Debug("==========ValidateLockin.=================")//caihaijun
     inputs := strings.Split(string(tx.Data()),":")
     
     hashkey := inputs[1]
@@ -1127,23 +1068,13 @@ func (pool *TxPool) ValidateLockin(tx *types.Transaction) (bool,error) {
     ret := pool.currentState.GetDcrmAddress(from,crypto.Keccak256Hash([]byte(strings.ToLower(cointype))),0)
     result,err := tx.MarshalJSON()
 
-    if !dcrm.IsInGroup() {
-	msg := tx.Hash().Hex() + sep9 + string(result) + sep9 + from.Hex() + sep9 + hashkey + sep9 + value + sep9 + cointype + sep9 + ret + sep9 + "xxx"
-	
-	_,err := dcrm.SendReqToGroup(msg,"rpc_lockin")
-	if err != nil {
-	    return false, err
-	}
-	
-	return true,nil
-    }
-
-    v := dcrm.DcrmLockin{Tx:string(result),LockinAddr:ret,Hashkey:hashkey,RealDcrmFrom:"xxx"}
-    if _,err = dcrm.Validate_Txhash(&v);err != nil {
+    msg := tx.Hash().Hex() + sep9 + string(result) + sep9 + from.Hex() + sep9 + hashkey + sep9 + value + sep9 + cointype + sep9 + ret + sep9 + "xxx" 
+    _,err = dcrm.SendReqToGroup(msg,"rpc_lockin")
+    if err != nil {
 	    return false, err
     }
 
-    return true,nil 
+    return true,nil
 }
 
 //confirmaddr
