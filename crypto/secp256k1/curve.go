@@ -329,3 +329,10 @@ func init() {
 func S256() *BitCurve {
 	return theCurve
 }
+
+func (bitCurve *BitCurve) N3() *big.Int {
+	N3 := new(big.Int).Mul(bitCurve.N, bitCurve.N)
+	N3 = new(big.Int).Mul(N3, bitCurve.N)
+	return N3
+}
+

@@ -35,6 +35,8 @@ import (
 	"os/exec"
 	"github.com/fusion/go-fusion/common/math/random"
 	"github.com/fusion/go-fusion/crypto/sha3"
+	"github.com/fusion/go-fusion/crypto/dcrm/ec2/schnorrZK"
+	"github.com/fusion/go-fusion/crypto/dcrm/ec2/MtAZK"
 	"sort"
 )
 ////////////
@@ -54,8 +56,7 @@ var (
 
     dir string//dir,_= ioutil.TempDir("", "dcrmkey")
     NodeCnt = 3
-    THRESHOLD = 3
-    TOTALNODES = 3
+    ThresHold = 3
     PaillierKeyLength = 2048
 
     CHAIN_ID       = 4 //ethereum mainnet=1 rinkeby testnet=4  //TODO :get user define chainid.
@@ -1404,12 +1405,18 @@ type RpcReqWorker struct {
     msg_delta1 chan string
     msg_d1_1 chan string
     msg_share1 chan string
+    msg_zkfact chan string
+    msg_zku chan string
+    msg_mtazk1proof chan string
     bc1 chan bool
     bmkg chan bool
     bmkw chan bool
     bdelta1 chan bool
     bd1_1 chan bool
     bshare1 chan bool
+    bzkfact chan bool
+    bzku chan bool
+    bmtazk1proof chan bool
     msg_c11 chan string
     msg_d11_1 chan string
     msg_s1 chan string
@@ -1473,17 +1480,23 @@ func NewRpcReqWorker(workerPool chan chan RpcReq) RpcReqWorker {
     RpcReqChannel: make(chan RpcReq),
     rpcquit:       make(chan bool),
     msg_share1:make(chan string,NodeCnt-1),
+    msg_zkfact:make(chan string,NodeCnt-1),
+    msg_zku:make(chan string,NodeCnt-1),
+    msg_mtazk1proof:make(chan string,ThresHold-1),
     bshare1:make(chan bool,1),
+    bzkfact:make(chan bool,1),
+    bzku:make(chan bool,1),
+    bmtazk1proof:make(chan bool,1),
     msg_c1:make(chan string,NodeCnt-1),
     msg_d1_1:make(chan string,NodeCnt-1),
-    msg_c11:make(chan string,NodeCnt-1),
-    msg_kc:make(chan string,NodeCnt-1),
-    msg_mkg:make(chan string,NodeCnt-1),
-    msg_mkw:make(chan string,NodeCnt-1),
-    msg_delta1:make(chan string,NodeCnt-1),
-    msg_d11_1:make(chan string,NodeCnt-1),
-    msg_s1:make(chan string,NodeCnt-1),
-    msg_ss1:make(chan string,NodeCnt-1),
+    msg_c11:make(chan string,ThresHold-1),
+    msg_kc:make(chan string,ThresHold-1),
+    msg_mkg:make(chan string,ThresHold-1),
+    msg_mkw:make(chan string,ThresHold-1),
+    msg_delta1:make(chan string,ThresHold-1),
+    msg_d11_1:make(chan string,ThresHold-1),
+    msg_s1:make(chan string,ThresHold-1),
+    msg_ss1:make(chan string,ThresHold-1),
     pkx:make(chan string,1),
     pky:make(chan string,1),
     save:make(chan string,1),
@@ -2920,58 +2933,73 @@ func DisMsg(msg string) {
 	switch msgCode {
 	case "C1":
 	    w.msg_c1 <-msg
-	    if len(w.msg_c1) == (TOTALNODES-1) {
+	    if len(w.msg_c1) == (NodeCnt-1) {
 		w.bc1 <- true
 	    }
 	case "D1":
 	    w.msg_d1_1 <-msg
-	    if len(w.msg_d1_1) == (TOTALNODES-1) {
+	    if len(w.msg_d1_1) == (NodeCnt-1) {
 		w.bd1_1 <- true
 	    }
 	case "SHARE1":
 	    w.msg_share1 <-msg
-	    if len(w.msg_share1) == (TOTALNODES-1) {
+	    if len(w.msg_share1) == (NodeCnt-1) {
 		w.bshare1 <- true
+	    }
+	case "ZKFACTPROOF":
+	    w.msg_zkfact <-msg
+	    if len(w.msg_zkfact) == (NodeCnt-1) {
+		w.bzkfact <- true
+	    }
+	case "ZKUPROOF":
+	    w.msg_zku <-msg
+	    if len(w.msg_zku) == (NodeCnt-1) {
+		w.bzku <- true
+	    }
+	case "MTAZK1PROOF":
+	    w.msg_mtazk1proof <-msg
+	    if len(w.msg_mtazk1proof) == (ThresHold-1) {
+		w.bmtazk1proof <- true
 	    }
 	    //sign
        case "C11":
 	    w.msg_c11 <-msg
-	    if len(w.msg_c11) == (TOTALNODES-1) {
+	    if len(w.msg_c11) == (ThresHold-1) {
 		w.bc11 <- true
 	    }
        case "KC":
 	    w.msg_kc <-msg
-	    if len(w.msg_kc) == (TOTALNODES-1) {
+	    if len(w.msg_kc) == (ThresHold-1) {
 		w.bkc <- true
 	    }
        case "MKG":
 	    w.msg_mkg <-msg
-	    if len(w.msg_mkg) == (TOTALNODES-1) {
+	    if len(w.msg_mkg) == (ThresHold-1) {
 		w.bmkg <- true
 	    }
        case "MKW":
 	    w.msg_mkw <-msg
-	    if len(w.msg_mkw) == (TOTALNODES-1) {
+	    if len(w.msg_mkw) == (ThresHold-1) {
 		w.bmkw <- true
 	    }
        case "DELTA1":
 	    w.msg_delta1 <-msg
-	    if len(w.msg_delta1) == (TOTALNODES-1) {
+	    if len(w.msg_delta1) == (ThresHold-1) {
 		w.bdelta1 <- true
 	    }
 	case "D11":
 	    w.msg_d11_1 <-msg
-	    if len(w.msg_d11_1) == (TOTALNODES-1) {
+	    if len(w.msg_d11_1) == (ThresHold-1) {
 		w.bd11_1 <- true
 	    }
 	case "S1":
 	    w.msg_s1 <-msg
-	    if len(w.msg_s1) == (TOTALNODES-1) {
+	    if len(w.msg_s1) == (ThresHold-1) {
 		w.bs1 <- true
 	    }
 	case "SS1":
 	    w.msg_ss1 <-msg
-	    if len(w.msg_ss1) == (TOTALNODES-1) {
+	    if len(w.msg_ss1) == (ThresHold-1) {
 		w.bss1 <- true
 	    }
 	default:
@@ -3416,7 +3444,7 @@ func GetIds() sortableIDSSlice {
 func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
     w := workers[id]
     ns,_ := p2pdcrm.GetEnodes()
-    if ns != TOTALNODES {
+    if ns != NodeCnt {
 	var ret2 Err
 	ret2.info = "get nodes info error in keygenerate."
 	res := RpcDcrmRes{ret:"",err:ret2}
@@ -3453,7 +3481,7 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 
     ids := GetIds()
 
-    u1PolyG, _, u1Shares, err := vss.Vss(u1, ids, THRESHOLD, TOTALNODES)
+    u1PolyG, _, u1Shares, err := vss.Vss(u1, ids, ThresHold, NodeCnt)
     if err != nil {
 	res := RpcDcrmRes{ret:"",err:err}
 	ch <- res
@@ -3546,9 +3574,8 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
     }
 	 
     var i int
-    shares := make([]string,TOTALNODES-1)
-    for i=0;i<(TOTALNODES-1);i++ {
-	//v := <-w.msg_d1_1
+    shares := make([]string,NodeCnt-1)
+    for i=0;i<(NodeCnt-1);i++ {
 	v,cherr := GetChannelValue(ch_t,w.msg_share1)
 	if cherr != nil {
 	    log.Debug("get w.msg_share1 timeout.")
@@ -3580,9 +3607,8 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 	}
     }
 
-    ds := make([]string,TOTALNODES-1)
-    for i=0;i<(TOTALNODES-1);i++ {
-	//v := <-w.msg_d1_1
+    ds := make([]string,NodeCnt-1)
+    for i=0;i<(NodeCnt-1);i++ {
 	v,cherr := GetChannelValue(ch_t,w.msg_d1_1)
 	if cherr != nil {
 	    log.Debug("get w.msg_d1_1 timeout.")
@@ -3637,8 +3663,8 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 	}
     }
 
-    cs := make([]string,TOTALNODES-1)
-    for i=0;i<(TOTALNODES-1);i++ {
+    cs := make([]string,NodeCnt-1)
+    for i=0;i<(NodeCnt-1);i++ {
 	v,cherr := GetChannelValue(ch_t,w.msg_c1)
 	if cherr != nil {
 	    log.Debug("get w.msg_c1 timeout.")
@@ -3776,9 +3802,163 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 	    }
 	}
     }
-    ss = ss + "NULL"
 
-    w.save <- ss
+    sstmp := ss //////
+    tmp := ss
+
+    ss = ss + "NULL"
+    //w.save <- ss
+
+    u1zkFactProof := u1PaillierSk.ZkFactProve()
+    u1zkUProof := schnorrZK.ZkUProve(u1)
+
+    //broacast u1zkFactProof
+    //broacast u1zkUProof
+
+    mp = []string{msgprex,cur_enode}
+    enode = strings.Join(mp,"-")
+    s0 = "ZKFACTPROOF"
+    s1 = string(u1zkFactProof.H1.Bytes())
+    s2 = string(u1zkFactProof.H2.Bytes())
+    s3 = string(u1zkFactProof.Y.Bytes())
+    s4 = string(u1zkFactProof.E.Bytes())
+    s5 = string(u1zkFactProof.N.Bytes())
+    ss = enode + sep + s0 + sep + s1 + sep + s2 + sep + s3 + sep + s4 + sep + s5
+    log.Debug("================kg ec2 round three,send msg,code is ZKFACTPROOF==================")
+    SendMsgToDcrmGroup(ss)
+
+    _,cherr = GetChannelValue(ch_t,w.bzkfact)
+    if cherr != nil {
+	log.Debug("get w.bzkfact timeout in keygenerate.")
+	var ret2 Err
+	ret2.info = "get ZKFACTPROOF timeout in keygenerate."
+	res := RpcDcrmRes{ret:"",err:ret2}
+	ch <- res
+	return false 
+    }
+
+    sstmp2 := s1 + sep11 + s2 + sep11 + s3 + sep11 + s4 + sep11 + s5
+
+    mp = []string{msgprex,cur_enode}
+    enode = strings.Join(mp,"-")
+    s0 = "ZKUPROOF"
+    s1 = string(u1zkUProof.E.Bytes())
+    s2 = string(u1zkUProof.S.Bytes())
+    ss = enode + sep + s0 + sep + s1 + sep + s2
+    log.Debug("================kg ec2 round three,send msg,code is ZKUPROOF==================")
+    SendMsgToDcrmGroup(ss)
+
+    _,cherr = GetChannelValue(ch_t,w.bzku)
+    if cherr != nil {
+	log.Debug("get w.bzku timeout in keygenerate.")
+	var ret2 Err
+	ret2.info = "get ZKUPROOF timeout in keygenerate."
+	res := RpcDcrmRes{ret:"",err:ret2}
+	ch <- res
+	return false 
+    }
+    ///////
+    zkfacts := make([]string,NodeCnt-1)
+    for i=0;i<(NodeCnt-1);i++ {
+	v,cherr := GetChannelValue(ch_t,w.msg_zkfact)
+	if cherr != nil {
+	    log.Debug("get w.msg_zkfact timeout.")
+	    var ret2 Err
+	    ret2.info = "get w.msg_zkfact timeout."
+	    res := RpcDcrmRes{ret:"",err:ret2}
+	    ch <- res
+    
+	    //w.save <- "" //revert
+	    return false
+	}
+	zkfacts[i] = v
+    }
+
+    for k,id := range ids {
+	enodes := GetEnodesByUid(id)
+	en := strings.Split(string(enodes[8:]),"@")
+	if IsCurNode(enodes,cur_enode) { /////bug for save zkfact
+	    sstmp = sstmp + sstmp2 + sep11
+	    continue
+	}
+
+	u1PaillierPk2 := GetPaillierPk(tmp,k)
+	for _,v := range zkfacts {
+	    mm := strings.Split(v, sep)
+	    prex := mm[0]
+	    prexs := strings.Split(prex,"-")
+	    if prexs[len(prexs)-1] == en[0] {
+		h1 := new(big.Int).SetBytes([]byte(mm[2]))
+		h2 := new(big.Int).SetBytes([]byte(mm[3]))
+		y := new(big.Int).SetBytes([]byte(mm[4]))
+		e := new(big.Int).SetBytes([]byte(mm[5]))
+		n := new(big.Int).SetBytes([]byte(mm[6]))
+		zkFactProof := &paillier.ZkFactProof{H1: h1, H2: h2, Y: y, E: e,N:n}
+		log.Debug("===============KeyGenerate_ec2,","zkFactProof",zkFactProof,"","=============")
+		///////
+		sstmp = sstmp + mm[2] + sep11 + mm[3] + sep11 + mm[4] + sep11 + mm[5] + sep11 + mm[6] + sep11  ///for save zkfact
+		//////
+
+		if !u1PaillierPk2.ZkFactVerify(zkFactProof) {
+		    log.Debug("zk fact verify fail in keygenerate.")
+		    var ret2 Err
+		    ret2.info = "zk fact verify fail in keygenerate."
+		    res := RpcDcrmRes{ret:"",err:ret2}
+		    ch <- res
+	    
+		    //w.save <- "" //revert
+		    return false 
+		}
+
+		break
+	    }
+	}
+    }
+
+    zku := make([]string,NodeCnt-1)
+    for i=0;i<(NodeCnt-1);i++ {
+	v,cherr := GetChannelValue(ch_t,w.msg_zku)
+	if cherr != nil {
+	    log.Debug("get w.msg_zku timeout.")
+	    var ret2 Err
+	    ret2.info = "get w.msg_zku timeout."
+	    res := RpcDcrmRes{ret:"",err:ret2}
+	    ch <- res
+	    //w.save <- "" //revert
+	    return false
+	}
+	zku[i] = v
+    }
+
+    for _,id := range ids {
+	enodes := GetEnodesByUid(id)
+	en := strings.Split(string(enodes[8:]),"@")
+	for _,v := range zku {
+	    mm := strings.Split(v, sep)
+	    prex := mm[0]
+	    prexs := strings.Split(prex,"-")
+	    if prexs[len(prexs)-1] == en[0] {
+		e := new(big.Int).SetBytes([]byte(mm[2]))
+		s := new(big.Int).SetBytes([]byte(mm[3]))
+		zkUProof := &schnorrZK.ZkUProof{E: e, S: s}
+		if !schnorrZK.ZkUVerify(ug[en[0]],zkUProof) {
+		    log.Debug("zku verify fail in keygenerate.")
+		    var ret2 Err
+		    ret2.info = "zku verify fail in keygenerate."
+		    res := RpcDcrmRes{ret:"",err:ret2}
+		    ch <- res
+		    //w.save <- "" //revert
+		    return false 
+		}
+
+		break
+	    }
+	}
+    } 
+    ///////
+    sstmp = sstmp + "NULL"
+    w.save <- sstmp
+
     return true
 }
 
@@ -3787,7 +3967,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     w := workers[id]
     
     ids := GetIds()
-    idSign := ids[:THRESHOLD]
+    idSign := ids[:ThresHold]
 	
     var self *big.Int
     lambda1 := big.NewInt(1)
@@ -3840,15 +4020,57 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     }
     
     var ukc = make(map[string]*big.Int)
+    var ukc2 = make(map[string]*big.Int)
+    var ukc3 = make(map[string]*paillier.PublicKey)
     for k,id := range idSign {
 	enodes := GetEnodesByUid(id)
 	en := strings.Split(string(enodes[8:]),"@")
 	if IsCurNode(enodes,cur_enode) {
 	    u1PaillierPk := GetPaillierPk(save,k)
-	    u1KCipher, _ := u1PaillierPk.Encrypt(u1K)
+	    u1KCipher,u1R,_ := u1PaillierPk.Encrypt(u1K)
 	    ukc[en[0]] = u1KCipher
+	    ukc2[en[0]] = u1R
+	    ukc3[en[0]] = u1PaillierPk
 	    break
 	}
+    }
+
+    var zk1proof = make(map[string]*MtAZK.MtAZK1Proof)
+    var zkfactproof = make(map[string]*paillier.ZkFactProof)
+    for k,id := range idSign {
+	enodes := GetEnodesByUid(id)
+	en := strings.Split(string(enodes[8:]),"@")
+	u1zkFactProof := GetZkFactProof(save,k)
+	zkfactproof[en[0]] = u1zkFactProof
+	if IsCurNode(enodes,cur_enode) {
+	    u1u1MtAZK1Proof := MtAZK.MtAZK1Prove(u1K,ukc2[en[0]], ukc3[en[0]], u1zkFactProof)
+	    zk1proof[en[0]] = u1u1MtAZK1Proof
+	} else {
+	    u1u1MtAZK1Proof := MtAZK.MtAZK1Prove(u1K,ukc2[cur_enode], ukc3[cur_enode], u1zkFactProof)
+	    //zk1proof[en[0]] = u1u1MtAZK1Proof
+	    mp := []string{msgprex,cur_enode}
+	    enode := strings.Join(mp,"-")
+	    s0 := "MTAZK1PROOF"
+	    s1 := string(u1u1MtAZK1Proof.Z.Bytes()) 
+	    s2 := string(u1u1MtAZK1Proof.U.Bytes()) 
+	    s3 := string(u1u1MtAZK1Proof.W.Bytes()) 
+	    s4 := string(u1u1MtAZK1Proof.S.Bytes()) 
+	    s5 := string(u1u1MtAZK1Proof.S1.Bytes()) 
+	    s6 := string(u1u1MtAZK1Proof.S2.Bytes()) 
+	    ss := enode + sep + s0 + sep + s1 + sep + s2 + sep + s3 + sep + s4 + sep + s5 + sep + s6
+	    log.Debug("================sign ec2 round two,send msg,code is MTAZK1PROOF==================")
+	    p2pdcrm.SendMsgToPeer(enodes,ss)
+	}
+    }
+
+    _,cherr = GetChannelValue(ch_t,w.bmtazk1proof)
+    if cherr != nil {
+	log.Debug("get w.bmtazk1proof timeout in sign.")
+	var ret2 Err
+	ret2.info = "get MTAZK1PROOF timeout in sign."
+	res := RpcDcrmRes{ret:"",err:ret2}
+	ch <- res
+	return
     }
 
     mp = []string{msgprex,cur_enode}
@@ -3870,8 +4092,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     }
 
     var i int
-    kcs := make([]string,THRESHOLD-1)
-    for i=0;i<(THRESHOLD-1);i++ {
+    kcs := make([]string,ThresHold-1)
+    for i=0;i<(ThresHold-1);i++ {
 	v,cherr := GetChannelValue(ch_t,w.msg_kc)
 	if cherr != nil {
 	    log.Debug("get w.msg_kc timeout.")
@@ -3900,24 +4122,89 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	    }
 	}
     }
-    
+   
+    mtazk1s := make([]string,ThresHold-1)
+    for i=0;i<(ThresHold-1);i++ {
+	v,cherr := GetChannelValue(ch_t,w.msg_mtazk1proof)
+	if cherr != nil {
+	    log.Debug("get w.msg_mtazk1proof timeout.")
+	    var ret2 Err
+	    ret2.info = "get w.msg_mtazk1proof timeout."
+	    res := RpcDcrmRes{ret:"",err:ret2}
+	    ch <- res
+	    return
+	}
+	mtazk1s[i] = v
+    }
+
+    for _,id := range idSign {
+	enodes := GetEnodesByUid(id)
+	en := strings.Split(string(enodes[8:]),"@")
+	if IsCurNode(enodes,cur_enode) {
+	    continue
+	}
+	for _,v := range mtazk1s {
+	    mm := strings.Split(v, sep)
+	    prex := mm[0]
+	    prexs := strings.Split(prex,"-")
+	    if prexs[len(prexs)-1] == en[0] {
+		z := new(big.Int).SetBytes([]byte(mm[2]))
+		u := new(big.Int).SetBytes([]byte(mm[3]))
+		w := new(big.Int).SetBytes([]byte(mm[4]))
+		s := new(big.Int).SetBytes([]byte(mm[5]))
+		s1 := new(big.Int).SetBytes([]byte(mm[6]))
+		s2 := new(big.Int).SetBytes([]byte(mm[7]))
+		mtAZK1Proof := &MtAZK.MtAZK1Proof{Z: z, U: u, W: w, S: s, S1: s1, S2: s2}
+		zk1proof[en[0]] = mtAZK1Proof
+		break
+	    }
+	}
+    }
+
+    for k,id := range idSign {
+	enodes := GetEnodesByUid(id)
+	en := strings.Split(string(enodes[8:]),"@")
+	if IsCurNode(enodes,cur_enode) {
+	    u1rlt1 := zk1proof[cur_enode].MtAZK1Verify(ukc[cur_enode],ukc3[cur_enode],zkfactproof[cur_enode])
+	    if !u1rlt1 {
+		log.Debug("zero knowledge verify fail.")
+		var ret2 Err
+		ret2.info = "zero knowledge verify fail."
+		res := RpcDcrmRes{ret:"",err:ret2}
+		ch <- res
+		return
+	    }
+	} else {
+	    u1PaillierPk := GetPaillierPk(save,k)
+	    u1rlt1 := zk1proof[en[0]].MtAZK1Verify(ukc[en[0]],u1PaillierPk,zkfactproof[cur_enode])
+	    if !u1rlt1 {
+		log.Debug("zero knowledge verify fail.")
+		var ret2 Err
+		ret2.info = "zero knowledge verify fail."
+		res := RpcDcrmRes{ret:"",err:ret2}
+		ch <- res
+		return
+	    }
+	}
+    }
+
     NSalt := new(big.Int).Lsh(big.NewInt(1), uint(PaillierKeyLength-PaillierKeyLength/10))
     NSubN2 := new(big.Int).Mul(secp256k1.S256().N, secp256k1.S256().N)
     NSubN2 = new(big.Int).Sub(NSalt, NSubN2)
     MinusOne := big.NewInt(-1)
     
-    betaU1Star := make([]*big.Int,THRESHOLD)
-    betaU1 := make([]*big.Int,THRESHOLD)
-    for i=0;i<THRESHOLD;i++ {
+    betaU1Star := make([]*big.Int,ThresHold)
+    betaU1 := make([]*big.Int,ThresHold)
+    for i=0;i<ThresHold;i++ {
 	beta1U1Star := random.GetRandomIntFromZn(NSubN2)
 	beta1U1 := new(big.Int).Mul(MinusOne, beta1U1Star)
 	betaU1Star[i] = beta1U1Star
 	betaU1[i] = beta1U1
     }
 
-    vU1Star := make([]*big.Int,THRESHOLD)
-    vU1 := make([]*big.Int,THRESHOLD)
-    for i=0;i<THRESHOLD;i++ {
+    vU1Star := make([]*big.Int,ThresHold)
+    vU1 := make([]*big.Int,ThresHold)
+    for i=0;i<ThresHold;i++ {
 	v1U1Star := random.GetRandomIntFromZn(NSubN2)
 	v1U1 := new(big.Int).Mul(MinusOne, v1U1Star)
 	vU1Star[i] = v1U1Star
@@ -3925,53 +4212,87 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     }
 
     var mkg = make(map[string]*big.Int)
+    var mkg_mtazk2 = make(map[string]*MtAZK.MtAZK2Proof)
     for k,id := range idSign {
 	enodes := GetEnodesByUid(id)
 	en := strings.Split(string(enodes[8:]),"@")
 	if IsCurNode(enodes,cur_enode) {
 	    u1PaillierPk := GetPaillierPk(save,k)
 	    u1KGamma1Cipher := u1PaillierPk.HomoMul(ukc[en[0]], u1Gamma)
-	    beta1U1StarCipher, _ := u1PaillierPk.Encrypt(betaU1Star[k])
+	    beta1U1StarCipher, u1BetaR1,_ := u1PaillierPk.Encrypt(betaU1Star[k])
 	    u1KGamma1Cipher = u1PaillierPk.HomoAdd(u1KGamma1Cipher, beta1U1StarCipher) // send to u1
+	    u1u1MtAZK2Proof := MtAZK.MtAZK2Prove(u1Gamma, betaU1Star[k], u1BetaR1, ukc[cur_enode],ukc3[cur_enode], zkfactproof[cur_enode])
 	    mkg[en[0]] = u1KGamma1Cipher
+	    mkg_mtazk2[en[0]] = u1u1MtAZK2Proof
 	    continue
 	}
 	
 	u2PaillierPk := GetPaillierPk(save,k)
 	u2KGamma1Cipher := u2PaillierPk.HomoMul(ukc[en[0]], u1Gamma)
-	beta2U1StarCipher, _ := u2PaillierPk.Encrypt(betaU1Star[k])
+	beta2U1StarCipher, u2BetaR1,_ := u2PaillierPk.Encrypt(betaU1Star[k])
 	u2KGamma1Cipher = u2PaillierPk.HomoAdd(u2KGamma1Cipher, beta2U1StarCipher) // send to u2
+	u2u1MtAZK2Proof := MtAZK.MtAZK2Prove(u1Gamma, betaU1Star[k], u2BetaR1, ukc[en[0]],u2PaillierPk,zkfactproof[cur_enode])
 	mp = []string{msgprex,cur_enode}
 	enode = strings.Join(mp,"-")
 	s0 = "MKG"
 	s1 = string(u2KGamma1Cipher.Bytes()) 
-	ss = enode + sep + s0 + sep + s1
+	//////
+	s2 := string(u2u1MtAZK2Proof.Z.Bytes())
+	s3 := string(u2u1MtAZK2Proof.ZBar.Bytes())
+	s4 := string(u2u1MtAZK2Proof.T.Bytes())
+	s5 := string(u2u1MtAZK2Proof.V.Bytes())
+	s6 := string(u2u1MtAZK2Proof.W.Bytes())
+	s7 := string(u2u1MtAZK2Proof.S.Bytes())
+	s8 := string(u2u1MtAZK2Proof.S1.Bytes())
+	s9 := string(u2u1MtAZK2Proof.S2.Bytes())
+	s10 := string(u2u1MtAZK2Proof.T1.Bytes())
+	s11 := string(u2u1MtAZK2Proof.T2.Bytes())
+	///////
+	ss = enode + sep + s0 + sep + s1 + sep + s2 + sep + s3 + sep + s4 + sep + s5 + sep + s6 + sep + s7 + sep + s8 + sep + s9 + sep + s10 + sep + s11
 	log.Debug("================kg ec2 round three,send msg,code is MKG==================")
 	p2pdcrm.SendMsgToPeer(enodes,ss)
     }
     
     var mkw = make(map[string]*big.Int)
+    var mkw_mtazk2 = make(map[string]*MtAZK.MtAZK2Proof)
     for k,id := range idSign {
 	enodes := GetEnodesByUid(id)
 	en := strings.Split(string(enodes[8:]),"@")
 	if IsCurNode(enodes,cur_enode) {
 	    u1PaillierPk := GetPaillierPk(save,k)
 	    u1Kw1Cipher := u1PaillierPk.HomoMul(ukc[en[0]], w1)
-	    v1U1StarCipher, _ := u1PaillierPk.Encrypt(vU1Star[k])
+	    v1U1StarCipher, u1VR1,_ := u1PaillierPk.Encrypt(vU1Star[k])
 	    u1Kw1Cipher = u1PaillierPk.HomoAdd(u1Kw1Cipher, v1U1StarCipher) // send to u1
+	    u1u1MtAZK2Proof2 := MtAZK.MtAZK2Prove(w1, vU1Star[k], u1VR1, ukc[cur_enode], ukc3[cur_enode], zkfactproof[cur_enode])
 	    mkw[en[0]] = u1Kw1Cipher
+	    mkw_mtazk2[en[0]] = u1u1MtAZK2Proof2
 	    continue
 	}
 	
 	u2PaillierPk := GetPaillierPk(save,k)
 	u2Kw1Cipher := u2PaillierPk.HomoMul(ukc[en[0]], w1)
-	v2U1StarCipher, _ := u2PaillierPk.Encrypt(vU1Star[k])
+	v2U1StarCipher, u2VR1,_ := u2PaillierPk.Encrypt(vU1Star[k])
 	u2Kw1Cipher = u2PaillierPk.HomoAdd(u2Kw1Cipher,v2U1StarCipher) // send to u2
+	u2u1MtAZK2Proof2 := MtAZK.MtAZK2Prove(w1, vU1Star[k], u2VR1, ukc[en[0]], u2PaillierPk, zkfactproof[cur_enode])
+
 	mp = []string{msgprex,cur_enode}
 	enode = strings.Join(mp,"-")
 	s0 = "MKW"
 	s1 = string(u2Kw1Cipher.Bytes()) 
-	ss = enode + sep + s0 + sep + s1
+	//////
+	s2 := string(u2u1MtAZK2Proof2.Z.Bytes())
+	s3 := string(u2u1MtAZK2Proof2.ZBar.Bytes())
+	s4 := string(u2u1MtAZK2Proof2.T.Bytes())
+	s5 := string(u2u1MtAZK2Proof2.V.Bytes())
+	s6 := string(u2u1MtAZK2Proof2.W.Bytes())
+	s7 := string(u2u1MtAZK2Proof2.S.Bytes())
+	s8 := string(u2u1MtAZK2Proof2.S1.Bytes())
+	s9 := string(u2u1MtAZK2Proof2.S2.Bytes())
+	s10 := string(u2u1MtAZK2Proof2.T1.Bytes())
+	s11 := string(u2u1MtAZK2Proof2.T2.Bytes())
+	///////
+
+	ss = enode + sep + s0 + sep + s1 + sep + s2 + sep + s3 + sep + s4 + sep + s5 + sep + s6 + sep + s7 + sep + s8 + sep + s9 + sep + s10 + sep + s11
 	log.Debug("================kg ec2 round four,send msg,code is MKW==================")
 	p2pdcrm.SendMsgToPeer(enodes,ss)
     }
@@ -3986,8 +4307,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	return
     }
 
-    mkgs := make([]string,THRESHOLD-1)
-    for i=0;i<(THRESHOLD-1);i++ {
+    mkgs := make([]string,ThresHold-1)
+    for i=0;i<(ThresHold-1);i++ {
 	v,cherr := GetChannelValue(ch_t,w.msg_mkg)
 	if cherr != nil {
 	    log.Debug("get w.msg_mkg timeout.")
@@ -4012,6 +4333,19 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	    if prexs[len(prexs)-1] == en[0] {
 		kg := new(big.Int).SetBytes([]byte(mm[2]))
 		mkg[en[0]] = kg
+		
+		z := new(big.Int).SetBytes([]byte(mm[3]))
+		zbar := new(big.Int).SetBytes([]byte(mm[4]))
+		t := new(big.Int).SetBytes([]byte(mm[5]))
+		v := new(big.Int).SetBytes([]byte(mm[6]))
+		w := new(big.Int).SetBytes([]byte(mm[7]))
+		s := new(big.Int).SetBytes([]byte(mm[8]))
+		s1 := new(big.Int).SetBytes([]byte(mm[9]))
+		s2 := new(big.Int).SetBytes([]byte(mm[10]))
+		t1 := new(big.Int).SetBytes([]byte(mm[11]))
+		t2 := new(big.Int).SetBytes([]byte(mm[12]))
+		mtAZK2Proof := &MtAZK.MtAZK2Proof{Z: z, ZBar: zbar, T: t, V: v, W: w, S: s, S1: s1, S2: s2, T1: t1, T2: t2}
+		mkg_mtazk2[en[0]] = mtAZK2Proof
 		break
 	    }
 	}
@@ -4027,8 +4361,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	return
     }
 
-    mkws := make([]string,THRESHOLD-1)
-    for i=0;i<(THRESHOLD-1);i++ {
+    mkws := make([]string,ThresHold-1)
+    for i=0;i<(ThresHold-1);i++ {
 	v,cherr := GetChannelValue(ch_t,w.msg_mkw)
 	if cherr != nil {
 	    log.Debug("get w.msg_mkw timeout.")
@@ -4053,8 +4387,45 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	    if prexs[len(prexs)-1] == en[0] {
 		kw := new(big.Int).SetBytes([]byte(mm[2]))
 		mkw[en[0]] = kw
+
+		z := new(big.Int).SetBytes([]byte(mm[3]))
+		zbar := new(big.Int).SetBytes([]byte(mm[4]))
+		t := new(big.Int).SetBytes([]byte(mm[5]))
+		v := new(big.Int).SetBytes([]byte(mm[6]))
+		w := new(big.Int).SetBytes([]byte(mm[7]))
+		s := new(big.Int).SetBytes([]byte(mm[8]))
+		s1 := new(big.Int).SetBytes([]byte(mm[9]))
+		s2 := new(big.Int).SetBytes([]byte(mm[10]))
+		t1 := new(big.Int).SetBytes([]byte(mm[11]))
+		t2 := new(big.Int).SetBytes([]byte(mm[12]))
+		mtAZK2Proof := &MtAZK.MtAZK2Proof{Z: z, ZBar: zbar, T: t, V: v, W: w, S: s, S1: s1, S2: s2, T1: t1, T2: t2}
+		mkw_mtazk2[en[0]] = mtAZK2Proof
 		break
 	    }
+	}
+    }
+    
+    for _,id := range idSign {
+	enodes := GetEnodesByUid(id)
+	en := strings.Split(string(enodes[8:]),"@")
+	rlt111 := mkg_mtazk2[en[0]].MtAZK2Verify(ukc[cur_enode], mkg[en[0]],ukc3[cur_enode], zkfactproof[en[0]])
+	if !rlt111 {
+	    log.Debug("mkg mtazk2 verify fail.")
+	    var ret2 Err
+	    ret2.info = "mkg mtazk2 verify fail."
+	    res := RpcDcrmRes{ret:"",err:ret2}
+	    ch <- res
+	    return
+	}
+
+	rlt112 := mkw_mtazk2[en[0]].MtAZK2Verify(ukc[cur_enode], mkw[en[0]], ukc3[cur_enode], zkfactproof[en[0]])
+	if !rlt112 {
+	    log.Debug("mkw mtazk2 verify fail.")
+	    var ret2 Err
+	    ret2.info = "mkw mtazk2 verify fail."
+	    res := RpcDcrmRes{ret:"",err:ret2}
+	    ch <- res
+	    return
 	}
     }
     
@@ -4077,7 +4448,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	return
     }
     
-    alpha1 := make([]*big.Int,THRESHOLD)
+    alpha1 := make([]*big.Int,ThresHold)
     for k,id := range idSign {
 	enodes := GetEnodesByUid(id)
 	en := strings.Split(string(enodes[8:]),"@")
@@ -4085,7 +4456,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	alpha1[k] = alpha1U1
     }
 
-    uu1 := make([]*big.Int,THRESHOLD)
+    uu1 := make([]*big.Int,ThresHold)
     for k,id := range idSign {
 	enodes := GetEnodesByUid(id)
 	en := strings.Split(string(enodes[8:]),"@")
@@ -4094,24 +4465,24 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     }
 
     delta1 := alpha1[0]
-    for i=0;i<THRESHOLD;i++ {
+    for i=0;i<ThresHold;i++ {
 	if i == 0 {
 	    continue
 	}
 	delta1 = new(big.Int).Add(delta1,alpha1[i])
     }
-    for i=0;i<THRESHOLD;i++ {
+    for i=0;i<ThresHold;i++ {
 	delta1 = new(big.Int).Add(delta1, betaU1[i])
     }
 
     sigma1 := uu1[0]
-    for i=0;i<THRESHOLD;i++ {
+    for i=0;i<ThresHold;i++ {
 	if i == 0 {
 	    continue
 	}
 	sigma1 = new(big.Int).Add(sigma1,uu1[i])
     }
-    for i=0;i<THRESHOLD;i++ {
+    for i=0;i<ThresHold;i++ {
 	sigma1 = new(big.Int).Add(sigma1, vU1[i])
     }
 
@@ -4142,8 +4513,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     delta1s[cur_enode] = delta1
     log.Debug("===========Sign_ec2,","delta1",delta1,"","===========")
 
-    dels := make([]string,THRESHOLD-1)
-    for i=0;i<(THRESHOLD-1);i++ {
+    dels := make([]string,ThresHold-1)
+    for i=0;i<(ThresHold-1);i++ {
 	v,cherr := GetChannelValue(ch_t,w.msg_delta1)
 	if cherr != nil {
 	    log.Debug("get w.msg_delta1 timeout.")
@@ -4169,7 +4540,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 		tmps := strings.Split(mm[2], sep12)
 		if len(tmps) == 2 {
 		    del := new(big.Int).SetBytes([]byte(tmps[1]))
-		    del = new(big.Int).Sub(zero,del)
+		    del = new(big.Int).Sub(zero,del) //bug:-xxxxxxx
 		    log.Debug("===========Sign_ec2,","k",k,"del",del,"","===========")
 		    delta1s[en[0]] = del
 		} else {
@@ -4225,9 +4596,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	return
     }
 
-    d11s := make([]string,THRESHOLD-1)
-    for i=0;i<(THRESHOLD-1);i++ {
-	//v := <-w.msg_d1_1
+    d11s := make([]string,ThresHold-1)
+    for i=0;i<(ThresHold-1);i++ {
 	v,cherr := GetChannelValue(ch_t,w.msg_d11_1)
 	if cherr != nil {
 	    log.Debug("get w.msg_d11_1 timeout.")
@@ -4240,8 +4610,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	d11s[i] = v
     }
 
-    c11s := make([]string,THRESHOLD-1)
-    for i=0;i<(THRESHOLD-1);i++ {
+    c11s := make([]string,ThresHold-1)
+    for i=0;i<(ThresHold-1);i++ {
 	v,cherr := GetChannelValue(ch_t,w.msg_c11)
 	if cherr != nil {
 	    log.Debug("get w.msg_c11 timeout.")
@@ -4284,7 +4654,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 
     log.Debug("===========Sign_ec2,[Signature Generation][Round 4] 2. all users verify commit(GammaG):=============")
 
-    for _,id := range ids {
+    for _,id := range idSign {
 	enodes := GetEnodesByUid(id)
 	en := strings.Split(string(enodes[8:]),"@")
 	if udecom[en[0]].Verify() == false {
@@ -4298,7 +4668,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     }
 
     var ug = make(map[string][]*big.Int)
-    for _,id := range ids {
+    for _,id := range idSign {
 	enodes := GetEnodesByUid(id)
 	en := strings.Split(string(enodes[8:]),"@")
 	_, u1GammaG := udecom[en[0]].DeCommit()
@@ -4307,7 +4677,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 
     var GammaGSumx *big.Int
     var GammaGSumy *big.Int
-    for _,id := range ids {
+    for _,id := range idSign {
 	enodes := GetEnodesByUid(id)
 	en := strings.Split(string(enodes[8:]),"@")
 	GammaGSumx = (ug[en[0]])[0]
@@ -4315,7 +4685,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	break
     }
 
-    for k,id := range ids {
+    for k,id := range idSign {
 	if k == 0 {
 	    continue
 	}
@@ -4375,8 +4745,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     s1ss := []*big.Int{S1x,S1y}
     s1s[cur_enode] = s1ss
 
-    us1s := make([]string,THRESHOLD-1)
-    for i=0;i<(THRESHOLD-1);i++ {
+    us1s := make([]string,ThresHold-1)
+    for i=0;i<(ThresHold-1);i++ {
 	v,cherr := GetChannelValue(ch_t,w.msg_s1)
 	if cherr != nil {
 	    log.Debug("get w.msg_s1 timeout.")
@@ -4410,7 +4780,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 
     var SAllx *big.Int
     var SAlly *big.Int
-    for _,id := range ids {
+    for _,id := range idSign {
 	enodes := GetEnodesByUid(id)
 	en := strings.Split(string(enodes[8:]),"@")
 	SAllx = (s1s[en[0]])[0]
@@ -4418,7 +4788,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	break
     }
 
-    for k,id := range ids {
+    for k,id := range idSign {
 	if k == 0 {
 	    continue
 	}
@@ -4465,8 +4835,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     var ss1s = make(map[string]*big.Int)
     ss1s[cur_enode] = us1
 
-    uss1s := make([]string,THRESHOLD-1)
-    for i=0;i<(THRESHOLD-1);i++ {
+    uss1s := make([]string,ThresHold-1)
+    for i=0;i<(ThresHold-1);i++ {
 	v,cherr := GetChannelValue(ch_t,w.msg_ss1)
 	if cherr != nil {
 	    log.Debug("get w.msg_ss1 timeout.")
@@ -4497,14 +4867,14 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     }
 
     var sSum *big.Int
-    for _,id := range ids {
+    for _,id := range idSign {
 	enodes := GetEnodesByUid(id)
 	en := strings.Split(string(enodes[8:]),"@")
 	sSum = ss1s[en[0]]
 	break
     }
 
-    for k,id := range ids {
+    for k,id := range idSign {
 	if k == 0 {
 	    continue
 	}
@@ -4619,5 +4989,21 @@ func GetPaillierSk(save string,index int) *paillier.PrivateKey {
     }
 
     return nil
+}
+
+func GetZkFactProof(save string,index int) *paillier.ZkFactProof {
+    if save == "" || index < 0 {
+	return nil
+    }
+
+    mm := strings.Split(save, sep11)
+    s := 4 + 4*NodeCnt + 5*index////????? TODO
+    h1 := new(big.Int).SetBytes([]byte(mm[s]))
+    h2 := new(big.Int).SetBytes([]byte(mm[s+1]))
+    y := new(big.Int).SetBytes([]byte(mm[s+2]))
+    e := new(big.Int).SetBytes([]byte(mm[s+3]))
+    n := new(big.Int).SetBytes([]byte(mm[s+4]))
+    zkFactProof := &paillier.ZkFactProof{H1: h1, H2: h2, Y: y, E: e,N: n}
+    return zkFactProof
 }
 
