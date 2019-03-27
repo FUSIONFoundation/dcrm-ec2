@@ -3452,11 +3452,19 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 	return false 
     }
 
+    //1. generate their own "partial" private key secretly
     u1 := random.GetRandomIntFromZn(secp256k1.S256().N)
+
+    // 2. calculate "partial" public key, make "pritial" public key commiment to get (C,D)
     u1Gx, u1Gy := secp256k1.S256().ScalarBaseMult(u1.Bytes())
     commitU1G := new(commit.Commitment).Commit(u1Gx, u1Gy)
+
+    // 3. generate their own paillier public key and private key
     u1PaillierPk, u1PaillierSk := paillier.GenerateKeyPair(PaillierKeyLength)
 
+    // 4. Broadcast
+    // commitU1G.C, commitU2G.C, commitU3G.C, commitU4G.C, commitU5G.C
+    // u1PaillierPk, u2PaillierPk, u3PaillierPk, u4PaillierPk, u5PaillierPk
     mp := []string{msgprex,cur_enode}
     enode := strings.Join(mp,"-")
     s0 := "C1"
@@ -3469,6 +3477,9 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
     log.Debug("================kg ec2 round one,send msg,code is C1==================")
     SendMsgToDcrmGroup(ss)
 
+    // 1. Receive Broadcast
+    // commitU1G.C, commitU2G.C, commitU3G.C, commitU4G.C, commitU5G.C
+    // u1PaillierPk, u2PaillierPk, u3PaillierPk, u4PaillierPk, u5PaillierPk
      _,cherr := GetChannelValue(ch_t,w.bc1)
     if cherr != nil {
 	log.Debug("get w.bc1 timeout.")
@@ -3479,6 +3490,10 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 	return false 
     }
 
+    // 2. generate their vss to get shares which is a set
+    // [notes]
+    // all nodes has their own id, in practival, we can take it as double hash of public key of fusion
+
     ids := GetIds()
 
     u1PolyG, _, u1Shares, err := vss.Vss(u1, ids, ThresHold, NodeCnt)
@@ -3488,6 +3503,13 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 	return false 
     }
 
+    // 3. send the the proper share to proper node 
+    //example for u1:
+    // Send u1Shares[0] to u1
+    // Send u1Shares[1] to u2
+    // Send u1Shares[2] to u3
+    // Send u1Shares[3] to u4
+    // Send u1Shares[4] to u5
     for _,id := range ids {
 	enodes := GetEnodesByUid(id)
 
@@ -3521,6 +3543,9 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 	}
     }
 
+    // 4. Broadcast
+    // commitU1G.D, commitU2G.D, commitU3G.D, commitU4G.D, commitU5G.D
+    // u1PolyG, u2PolyG, u3PolyG, u4PolyG, u5PolyG
     mp = []string{msgprex,cur_enode}
     enode = strings.Join(mp,"-")
     s0 = "D1"
@@ -3553,6 +3578,9 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
     log.Debug("================kg ec2 round three,send msg,code is D1==================")
     SendMsgToDcrmGroup(ss)
 
+    // 1. Receive Broadcast
+    // commitU1G.D, commitU2G.D, commitU3G.D, commitU4G.D, commitU5G.D
+    // u1PolyG, u2PolyG, u3PolyG, u4PolyG, u5PolyG
     _,cherr = GetChannelValue(ch_t,w.bd1_1)
     if cherr != nil {
 	log.Debug("get w.bd1_1 timeout in keygenerate.")
@@ -3563,6 +3591,7 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 	return false 
     }
 
+    // 2. Receive Personal Data
     _,cherr = GetChannelValue(ch_t,w.bshare1)
     if cherr != nil {
 	log.Debug("get w.bshare1 timeout in keygenerate.")
@@ -3648,8 +3677,8 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
     }
     upg[cur_enode] = u1PolyG
 
+    // 3. verify the share
     log.Debug("[Key Generation ec2][Round 3] 3. u1 verify share:")
-    
     for _,id := range ids {
 	enodes := GetEnodesByUid(id)
 	en := strings.Split(string(enodes[8:]),"@")
@@ -3663,6 +3692,8 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 	}
     }
 
+    // 4.verify and de-commitment to get uG
+    // for all nodes, construct the commitment by the receiving C and D
     cs := make([]string,NodeCnt-1)
     for i=0;i<(NodeCnt-1);i++ {
 	v,cherr := GetChannelValue(ch_t,w.msg_c1)
@@ -3704,7 +3735,8 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
     deCommit_commitU1G := &commit.Commitment{C: commitU1G.C, D: commitU1G.D}
     udecom[cur_enode] = deCommit_commitU1G
 
-    log.Debug("[Key Generation ec2][Round 3] 4. all users verify commit:")
+    // for all nodes, verify the commitment
+    log.Debug("[Key Generation ec2][Round 3] 4. all nodes verify commit:")
     for _,id := range ids {
 	enodes := GetEnodesByUid(id)
 	en := strings.Split(string(enodes[8:]),"@")
@@ -3719,6 +3751,7 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 	}
     }
 
+    // for all nodes, de-commitment
     var ug = make(map[string][]*big.Int)
     for _,id := range ids {
 	enodes := GetEnodesByUid(id)
@@ -3727,6 +3760,7 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 	ug[en[0]] = u1G
     }
 
+    // for all nodes, calculate the public key
     var pkx *big.Int
     var pky *big.Int
     for _,id := range ids {
@@ -3750,6 +3784,7 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
     w.pkx <- string(pkx.Bytes())
     w.pky <- string(pky.Bytes())
 
+    // 5. calculate the share of private key
     var skU1 *big.Int
     for _,id := range ids {
 	enodes := GetEnodesByUid(id)
@@ -3770,6 +3805,7 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
     skU1 = new(big.Int).Mod(skU1, secp256k1.S256().N)
     log.Debug("=========KeyGenerate_ec2,","skU1",skU1,"","============")
 
+    //save skU1/u1PaillierSk/u1PaillierPk/...
     ss = string(skU1.Bytes())
     ss = ss + sep11
     s1 = u1PaillierSk.Length
@@ -3807,14 +3843,17 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
     tmp := ss
 
     ss = ss + "NULL"
-    //w.save <- ss
 
+    // 6. calculate the zk
+    // ## add content: zk of paillier key, zk of u
+    
+    // zk of paillier key
     u1zkFactProof := u1PaillierSk.ZkFactProve()
+    // zk of u
     u1zkUProof := schnorrZK.ZkUProve(u1)
 
-    //broacast u1zkFactProof
-    //broacast u1zkUProof
-
+    // 7. Broadcast zk
+    // u1zkFactProof, u2zkFactProof, u3zkFactProof, u4zkFactProof, u5zkFactProof
     mp = []string{msgprex,cur_enode}
     enode = strings.Join(mp,"-")
     s0 = "ZKFACTPROOF"
@@ -3827,6 +3866,8 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
     log.Debug("================kg ec2 round three,send msg,code is ZKFACTPROOF==================")
     SendMsgToDcrmGroup(ss)
 
+    // 1. Receive Broadcast zk
+    // u1zkFactProof, u2zkFactProof, u3zkFactProof, u4zkFactProof, u5zkFactProof
     _,cherr = GetChannelValue(ch_t,w.bzkfact)
     if cherr != nil {
 	log.Debug("get w.bzkfact timeout in keygenerate.")
@@ -3839,6 +3880,8 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 
     sstmp2 := s1 + sep11 + s2 + sep11 + s3 + sep11 + s4 + sep11 + s5
 
+    // 8. Broadcast zk
+    // u1zkUProof, u2zkUProof, u3zkUProof, u4zkUProof, u5zkUProof
     mp = []string{msgprex,cur_enode}
     enode = strings.Join(mp,"-")
     s0 = "ZKUPROOF"
@@ -3848,6 +3891,8 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
     log.Debug("================kg ec2 round three,send msg,code is ZKUPROOF==================")
     SendMsgToDcrmGroup(ss)
 
+    // 9. Receive Broadcast zk
+    // u1zkUProof, u2zkUProof, u3zkUProof, u4zkUProof, u5zkUProof
     _,cherr = GetChannelValue(ch_t,w.bzku)
     if cherr != nil {
 	log.Debug("get w.bzku timeout in keygenerate.")
@@ -3857,7 +3902,11 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 	ch <- res
 	return false 
     }
-    ///////
+    
+    // 1. verify the zk
+    // ## add content: verify zk of paillier key, zk of u
+	
+    // for all nodes, verify zk of paillier key
     zkfacts := make([]string,NodeCnt-1)
     for i=0;i<(NodeCnt-1);i++ {
 	v,cherr := GetChannelValue(ch_t,w.msg_zkfact)
@@ -3868,7 +3917,6 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 	    res := RpcDcrmRes{ret:"",err:ret2}
 	    ch <- res
     
-	    //w.save <- "" //revert
 	    return false
 	}
 	zkfacts[i] = v
@@ -3906,7 +3954,6 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 		    res := RpcDcrmRes{ret:"",err:ret2}
 		    ch <- res
 	    
-		    //w.save <- "" //revert
 		    return false 
 		}
 
@@ -3915,6 +3962,7 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 	}
     }
 
+    // for all nodes, verify zk of u
     zku := make([]string,NodeCnt-1)
     for i=0;i<(NodeCnt-1);i++ {
 	v,cherr := GetChannelValue(ch_t,w.msg_zku)
@@ -3924,7 +3972,6 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 	    ret2.info = "get w.msg_zku timeout."
 	    res := RpcDcrmRes{ret:"",err:ret2}
 	    ch <- res
-	    //w.save <- "" //revert
 	    return false
 	}
 	zku[i] = v
@@ -3947,7 +3994,6 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 		    ret2.info = "zku verify fail in keygenerate."
 		    res := RpcDcrmRes{ret:"",err:ret2}
 		    ch <- res
-		    //w.save <- "" //revert
 		    return false 
 		}
 
@@ -3955,7 +4001,7 @@ func KeyGenerate_ec2(msgprex string,ch chan interface{},id int) bool {
 	    }
 	}
     } 
-    ///////
+    
     sstmp = sstmp + "NULL"
     w.save <- sstmp
 
@@ -3966,9 +4012,12 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     log.Debug("===================Sign_ec2====================")
     w := workers[id]
     
+    // [Notes]
+    // 1. assume the nodes who take part in the signature generation as follows
     ids := GetIds()
     idSign := ids[:ThresHold]
 	
+    // 1. map the share of private key to no-threshold share of private key
     var self *big.Int
     lambda1 := big.NewInt(1)
     for _,uid := range idSign {
@@ -3995,12 +4044,16 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     w1 := new(big.Int).Mul(lambda1, skU1)
     w1 = new(big.Int).Mod(w1,secp256k1.S256().N)
     
+    // 2. select k and gamma randomly
     u1K := random.GetRandomIntFromZn(secp256k1.S256().N)
     u1Gamma := random.GetRandomIntFromZn(secp256k1.S256().N)
     
+    // 3. make gamma*G commitment to get (C, D)
     u1GammaGx,u1GammaGy := secp256k1.S256().ScalarBaseMult(u1Gamma.Bytes())
     commitU1GammaG := new(commit.Commitment).Commit(u1GammaGx, u1GammaGy)
 
+    // 4. Broadcast
+    //	commitU1GammaG.C, commitU2GammaG.C, commitU3GammaG.C
     mp := []string{msgprex,cur_enode}
     enode := strings.Join(mp,"-")
     s0 := "C11"
@@ -4009,6 +4062,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     log.Debug("================sign ec2 round one,send msg,code is C11==================")
     SendMsgToDcrmGroup(ss)
 
+    // 1. Receive Broadcast
+    //	commitU1GammaG.C, commitU2GammaG.C, commitU3GammaG.C
      _,cherr := GetChannelValue(ch_t,w.bc11)
     if cherr != nil {
 	log.Debug("get w.bc11 timeout.")
@@ -4019,6 +4074,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	return
     }
     
+    // 2. MtA(k, gamma) and MtA(k, w)
+    // 2.1 encrypt c_k = E_paillier(k)
     var ukc = make(map[string]*big.Int)
     var ukc2 = make(map[string]*big.Int)
     var ukc3 = make(map[string]*paillier.PublicKey)
@@ -4035,6 +4092,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	}
     }
 
+    // 2.2 calculate zk(k)
     var zk1proof = make(map[string]*MtAZK.MtAZK1Proof)
     var zkfactproof = make(map[string]*paillier.ZkFactProof)
     for k,id := range idSign {
@@ -4073,6 +4131,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	return
     }
 
+    // 2.3 Broadcast c_k, zk(k)
+    // u1KCipher, u2KCipher, u3KCipher
     mp = []string{msgprex,cur_enode}
     enode = strings.Join(mp,"-")
     s0 = "KC"
@@ -4081,6 +4141,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     log.Debug("================sign ec2 round two,send msg,code is KC==================")
     SendMsgToDcrmGroup(ss)
 
+    // 2.4 Receive Broadcast c_k, zk(k)
+    // u1KCipher, u2KCipher, u3KCipher
      _,cherr = GetChannelValue(ch_t,w.bkc)
     if cherr != nil {
 	log.Debug("get w.bkc timeout.")
@@ -4123,6 +4185,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	}
     }
    
+    // example for u1, receive: u1u1MtAZK1Proof from u1, u2u1MtAZK1Proof from u2, u3u1MtAZK1Proof from u3
     mtazk1s := make([]string,ThresHold-1)
     for i=0;i<(ThresHold-1);i++ {
 	v,cherr := GetChannelValue(ch_t,w.msg_mtazk1proof)
@@ -4161,6 +4224,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	}
     }
 
+    // 2.5 verify zk(k)
     for k,id := range idSign {
 	enodes := GetEnodesByUid(id)
 	en := strings.Split(string(enodes[8:]),"@")
@@ -4188,9 +4252,16 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	}
     }
 
+    // 2.6
+    // select betaStar randomly, and calculate beta, MtA(k, gamma)
+    // select betaStar randomly, and calculate beta, MtA(k, w)
+    
+    // [Notes]
+    // 1. betaStar is in [1, paillier.N - secp256k1.N^2]
     NSalt := new(big.Int).Lsh(big.NewInt(1), uint(PaillierKeyLength-PaillierKeyLength/10))
     NSubN2 := new(big.Int).Mul(secp256k1.S256().N, secp256k1.S256().N)
     NSubN2 = new(big.Int).Sub(NSalt, NSubN2)
+    // 2. MinusOne
     MinusOne := big.NewInt(-1)
     
     betaU1Star := make([]*big.Int,ThresHold)
@@ -4211,6 +4282,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	vU1[i] = v1U1
     }
 
+    // 2.7
+    // send c_kGamma to proper node, MtA(k, gamma)   zk
     var mkg = make(map[string]*big.Int)
     var mkg_mtazk2 = make(map[string]*MtAZK.MtAZK2Proof)
     for k,id := range idSign {
@@ -4253,6 +4326,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	p2pdcrm.SendMsgToPeer(enodes,ss)
     }
     
+    // 2.8
+    // send c_kw to proper node, MtA(k, w)   zk
     var mkw = make(map[string]*big.Int)
     var mkw_mtazk2 = make(map[string]*MtAZK.MtAZK2Proof)
     for k,id := range idSign {
@@ -4297,6 +4372,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	p2pdcrm.SendMsgToPeer(enodes,ss)
     }
 
+    // 2.9
+    // receive c_kGamma from proper node, MtA(k, gamma)   zk
      _,cherr = GetChannelValue(ch_t,w.bmkg)
     if cherr != nil {
 	log.Debug("get w.bmkg timeout.")
@@ -4351,6 +4428,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	}
     }
 
+    // 2.10
+    // receive c_kw from proper node, MtA(k, w)    zk
     _,cherr = GetChannelValue(ch_t,w.bmkw)
     if cherr != nil {
 	log.Debug("get w.bmkw timeout.")
@@ -4405,6 +4484,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	}
     }
     
+    // 2.11 verify zk
     for _,id := range idSign {
 	enodes := GetEnodesByUid(id)
 	en := strings.Split(string(enodes[8:]),"@")
@@ -4429,6 +4509,9 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	}
     }
     
+    // 2.12
+    // decrypt c_kGamma to get alpha, MtA(k, gamma)
+    // MtA(k, gamma)
     var index int
     for k,id := range idSign {
 	enodes := GetEnodesByUid(id)
@@ -4456,6 +4539,9 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	alpha1[k] = alpha1U1
     }
 
+    // 2.13
+    // decrypt c_kw to get u, MtA(k, w)
+    // MtA(k, w)
     uu1 := make([]*big.Int,ThresHold)
     for k,id := range idSign {
 	enodes := GetEnodesByUid(id)
@@ -4464,6 +4550,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	uu1[k] = u1U1
     }
 
+    // 2.14
+    // calculate delta, MtA(k, gamma)
     delta1 := alpha1[0]
     for i=0;i<ThresHold;i++ {
 	if i == 0 {
@@ -4475,6 +4563,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	delta1 = new(big.Int).Add(delta1, betaU1[i])
     }
 
+    // 2.15
+    // calculate sigma, MtA(k, w)
     sigma1 := uu1[0]
     for i=0;i<ThresHold;i++ {
 	if i == 0 {
@@ -4486,6 +4576,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	sigma1 = new(big.Int).Add(sigma1, vU1[i])
     }
 
+    // 3. Broadcast
+    // delta: delta1, delta2, delta3
     mp = []string{msgprex,cur_enode}
     enode = strings.Join(mp,"-")
     s0 = "DELTA1"
@@ -4499,6 +4591,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     log.Debug("================sign ec2 round five,send msg,code is DELTA1==================")
     SendMsgToDcrmGroup(ss)
 
+    // 1. Receive Broadcast
+    // delta: delta1, delta2, delta3
      _,cherr = GetChannelValue(ch_t,w.bdelta1)
     if cherr != nil {
 	log.Debug("get w.bdelta1 timeout.")
@@ -4553,6 +4647,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	}
     }
     
+    // 2. calculate deltaSum
     var deltaSum *big.Int
     for _,id := range idSign {
 	enodes := GetEnodesByUid(id)
@@ -4571,6 +4666,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     }
     deltaSum = new(big.Int).Mod(deltaSum, secp256k1.S256().N)
 
+    // 3. Broadcast
+    // commitU1GammaG.D, commitU2GammaG.D, commitU3GammaG.D
     mp = []string{msgprex,cur_enode}
     enode = strings.Join(mp,"-")
     s0 = "D11"
@@ -4586,6 +4683,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     log.Debug("================sign ec2 round six,send msg,code is D11==================")
     SendMsgToDcrmGroup(ss)
 
+    // 1. Receive Broadcast
+    // commitU1GammaG.D, commitU2GammaG.D, commitU3GammaG.D
     _,cherr = GetChannelValue(ch_t,w.bd11_1)
     if cherr != nil {
 	log.Debug("get w.bd11_1 timeout in sign.")
@@ -4624,6 +4723,9 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	c11s[i] = v
     }
 
+    // 2. verify and de-commitment to get GammaG
+    
+    // for all nodes, construct the commitment by the receiving C and D
     var udecom = make(map[string]*commit.Commitment)
     for _,v := range c11s {
 	mm := strings.Split(v, sep)
@@ -4652,8 +4754,9 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     udecom[cur_enode] = deCommit_commitU1GammaG
     log.Debug("=========Sign_ec2,","deCommit_commitU1GammaG",deCommit_commitU1GammaG,"","==========")
 
-    log.Debug("===========Sign_ec2,[Signature Generation][Round 4] 2. all users verify commit(GammaG):=============")
+    log.Debug("===========Sign_ec2,[Signature Generation][Round 4] 2. all nodes verify commit(GammaG):=============")
 
+    // for all nodes, verify the commitment
     for _,id := range idSign {
 	enodes := GetEnodesByUid(id)
 	en := strings.Split(string(enodes[8:]),"@")
@@ -4667,6 +4770,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	}
     }
 
+    // for all nodes, de-commitment
     var ug = make(map[string][]*big.Int)
     for _,id := range idSign {
 	enodes := GetEnodesByUid(id)
@@ -4675,6 +4779,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	ug[en[0]] = u1GammaG
     }
 
+    // for all nodes, calculate the GammaGSum
     var GammaGSumx *big.Int
     var GammaGSumy *big.Int
     for _,id := range idSign {
@@ -4696,9 +4801,11 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     }
     log.Debug("========Sign_ec2,","GammaGSumx",GammaGSumx,"GammaGSumy",GammaGSumy,"","===========")
 	
+    // 3. calculate deltaSum^-1 * GammaGSum
     deltaSumInverse := new(big.Int).ModInverse(deltaSum, secp256k1.S256().N)
     deltaGammaGx, deltaGammaGy := secp256k1.S256().ScalarMult(GammaGSumx, GammaGSumy, deltaSumInverse.Bytes())
 
+    // 4. get r = deltaGammaGx
     r := deltaGammaGx
 
     if r.Cmp(zero) == 0 {
@@ -4710,6 +4817,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	return
     }
     
+    // 5. calculate s
     mMtA,_ := new(big.Int).SetString(message,16)
     
     mk1 := new(big.Int).Mul(mMtA, u1K)
@@ -4718,10 +4826,13 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     us1 = new(big.Int).Mod(us1, secp256k1.S256().N)
     log.Debug("=========Sign_ec2,","us1",us1,"","==========")
     
+    // 6. calculate S = s * R
     S1x, S1y := secp256k1.S256().ScalarMult(deltaGammaGx, deltaGammaGy, us1.Bytes())
     log.Debug("=========Sign_ec2,","S1x",S1x,"","==========")
     log.Debug("=========Sign_ec2,","S1y",S1y,"","==========")
     
+    // 7. Broadcast
+    // S: S1, S2, S3
     mp = []string{msgprex,cur_enode}
     enode = strings.Join(mp,"-")
     s0 = "S1"
@@ -4731,6 +4842,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     log.Debug("================sign ec2 round seven,send msg,code is S1==================")
     SendMsgToDcrmGroup(ss)
 
+    // 1. Receive Broadcast
+    // S: S1, S2, S3
     _,cherr = GetChannelValue(ch_t,w.bs1)
     if cherr != nil {
 	log.Debug("get w.bs1 timeout in sign.")
@@ -4778,6 +4891,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	}
     }
 
+    // 2. calculate SAll
     var SAllx *big.Int
     var SAlly *big.Int
     for _,id := range idSign {
@@ -4800,6 +4914,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     log.Debug("[Signature Generation][Test] verify SAll ?= m*G + r*PK:")
     log.Debug("========Sign_ec2,","SAllx",SAllx,"SAlly",SAlly,"","===========")
 	
+    // 3. verify SAll ?= m*G + r*PK
     mMtAGx, mMtAGy := secp256k1.S256().ScalarBaseMult(mMtA.Bytes())
     rMtAPKx, rMtAPKy := secp256k1.S256().ScalarMult(pkx, pky, deltaGammaGx.Bytes())
     SAllComputex, SAllComputey := secp256k1.S256().Add(mMtAGx, mMtAGy, rMtAPKx, rMtAPKy)
@@ -4814,6 +4929,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	return
     }
 
+    // 4. Broadcast
+    // s: s1, s2, s3
     mp = []string{msgprex,cur_enode}
     enode = strings.Join(mp,"-")
     s0 = "SS1"
@@ -4822,6 +4939,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     log.Debug("================sign ec2 round eight,send msg,code is SS1==================")
     SendMsgToDcrmGroup(ss)
 
+    // 1. Receive Broadcast
+    // s: s1, s2, s3
     _,cherr = GetChannelValue(ch_t,w.bss1)
     if cherr != nil {
 	log.Debug("get w.bss1 timeout in sign.")
@@ -4866,6 +4985,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	}
     }
 
+    // 2. calculate s
     var sSum *big.Int
     for _,id := range idSign {
 	enodes := GetEnodesByUid(id)
@@ -4885,6 +5005,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     }
     sSum = new(big.Int).Mod(sSum, secp256k1.S256().N) 
    
+    // 3. justify the s
     bb := false
     halfN := new(big.Int).Div(secp256k1.S256().N, big.NewInt(2))
     if sSum.Cmp(halfN) > 0 {
@@ -4905,6 +5026,8 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     log.Debug("==========Sign_ec2,","r",r,"===============")
     log.Debug("==========Sign_ec2,","s",s,"===============")
     
+    // **[Test]  verify signature with MtA
+    // ** verify the signature
     sSumInverse := new(big.Int).ModInverse(sSum, secp256k1.S256().N)
     mMtASInverse := new(big.Int).Mul(mMtA, sSumInverse)
     mMtASInverse = new(big.Int).Mod(mMtASInverse, secp256k1.S256().N)
@@ -4924,6 +5047,7 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
 	ch <- res
 	return
     }
+    // **[End-Test]  verify signature with MtA
 
     signature := new(ECDSASignature)
     signature.New()
@@ -4933,13 +5057,9 @@ func Sign_ec2(msgprex string,save string,message string,tokenType string,pkx *bi
     //v
     recid := secp256k1.Get_ecdsa_sign_v(computeRxMtA,computeRyMtA)
     if tokenType == "ETH" && bb {
-	//s = new(big.Int).Sub(secp256k1.S256().N,s)
-	//signature.setS(s)
 	recid ^=1
     }
     if tokenType == "BTC" && bb {
-	//s = new(big.Int).Sub(secp256k1.S256().N,s)
-	//signature.setS(s);
 	recid ^= 1
     }
     signature.SetRecoveryParam(int32(recid))
