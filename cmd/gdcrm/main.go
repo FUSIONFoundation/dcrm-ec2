@@ -290,7 +290,6 @@ func geth(ctx *cli.Context) error {
 	
 	utils.SetDatadir (ctx) //caihaijun
 	//dcrm.RestoreNodeInfo() //caihaijun
-	dcrm.InitP2pParams() //caihaijun
 	node := makeFullNode(ctx)
 	startNode(ctx, node)
 	dcrm.InitNonDcrmChan() //caihaijun

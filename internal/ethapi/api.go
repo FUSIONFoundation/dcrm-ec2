@@ -508,38 +508,6 @@ func NewPublicFsnAPI(b Backend) *PublicFsnAPI {
 }
 
 //+++++++++++++++++caihaijun+++++++++++++++++++
-
-//3.0 api
-func (s *PublicFsnAPI) DcrmReqAddress(ctx context.Context,pubkey string,cointype string) (string, error) {
-    log.Debug("================DcrmReqAddress================")
-    v := dcrm.DcrmReqAddress{Pub:pubkey,Cointype:cointype}
-    //addr,err := dcrm.Dcrm_ReqAddress(pubkey,cointype)
-    addr,err := dcrm.Dcrm_ReqAddress(&v)
-    log.Debug("DcrmReqAddress","ret",addr)
-    return addr,err
-}
-
-func (s *PublicFsnAPI) DcrmSign(ctx context.Context,sig string,txhash string,dcrmaddr string,cointype string) (string, error) {
-    log.Debug("================DcrmSign================")
-    v := dcrm.DcrmSign{Sig:sig,Txhash:txhash,DcrmAddr:dcrmaddr,Cointype:cointype}
-    sign,err := dcrm.Dcrm_Sign(&v)
-    log.Debug("DcrmSign","ret",sign)
-    return sign,err
-}
-
-func (s *PublicFsnAPI) DcrmNodeInfo(ctx context.Context) (string, error) {
-    log.Debug("================DcrmNodeInfo================")
-    info,err := dcrm.Dcrm_NodeInfo()
-    return info,err
-}
-
-func (s *PublicFsnAPI) DcrmGetAccountList(ctx context.Context,pubkey string) (string, error) {
-    log.Debug("================DcrmGetAccountList===============")
-    accountlist,err := dcrm.Dcrm_GetAccountList(pubkey)
-    return accountlist,err
-}
-
-//==========================================
 type DcrmAddrRes struct {
     FusionAccount string
     DcrmAddr string
@@ -567,35 +535,20 @@ func (s *PublicFsnAPI) DcrmReqAddr(ctx context.Context,fusionaddr string,cointyp
     if e == nil && dcrmaddr != "" {
 	return "the account has confirm dcrm address already.the dcrm address is:" + dcrmaddr,nil
     }
-
-    if !dcrm.IsInGroup() {
-	//log.Debug("================DcrmReqAddr !dcrm.IsInGroup()================")
-	msg := fusionaddr + sep9 + "xxx" + sep9 + cointype 
-	addr,err := dcrm.SendReqToGroup(msg,"rpc_req_dcrmaddr")
-	if addr == "" || err != nil {
-		//log.Debug("==============DcrmReqAddr,req addr fail.===========")
-		return "", err
+    
+    if dcrm.IsInGroup() {
+	has,da,err := dcrm.IsFusionAccountExsitDcrmAddr(fusionaddr,cointype,"")
+	if err == nil && has == true {
+	    return "the account has request dcrm address already.the dcrm address is:" + da,nil //TODO
 	}
-	
-	//log.Debug("DcrmReqAddr,req addr success.","addr",addr)
-	m := DcrmAddrRes{FusionAccount:fusionaddr,DcrmAddr:addr,Type:cointype}
-	b,_ := json.Marshal(m)
-	return string(b),nil
     }
 
-    has,da,err := dcrm.IsFusionAccountExsitDcrmAddr(fusionaddr,cointype,"")
-    if err == nil && has == true {
-	return "the account has request dcrm address already.the dcrm address is:" + da,nil //TODO
-    }
-
-    //log.Debug("===========DcrmReqAddr,in group.==========")
-    v := dcrm.DcrmLiLoReqAddress{Fusionaddr:fusionaddr,Pub:"xxx",Cointype:cointype}
-    addr,err := dcrm.Dcrm_LiLoReqAddress(&v)
+    msg := fusionaddr + sep9 + "xxx" + sep9 + cointype 
+    addr,err := dcrm.SendReqToGroup(msg,"rpc_req_dcrmaddr")
     if addr == "" || err != nil {
 	    return "", err
     }
-
-    //log.Debug("============return json data include dcrm addr.==============")
+    
     m := DcrmAddrRes{FusionAccount:fusionaddr,DcrmAddr:addr,Type:cointype}
     b,_ := json.Marshal(m)
     return string(b),nil

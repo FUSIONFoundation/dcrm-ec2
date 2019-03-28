@@ -4,6 +4,7 @@ package paillier
 import (
 	"errors"
 	"github.com/fusion/go-fusion/common/math/random"
+	"github.com/fusion/go-fusion/crypto/sha3"
 	"math/big"
 	"strconv"
 )
@@ -46,9 +47,10 @@ func GenerateKeyPair(length int) (*PublicKey, *PrivateKey) {
 	return publicKey, privateKey
 }
 
-func (publicKey *PublicKey) Encrypt(mBigInt *big.Int) (*big.Int, error) {
+//func (publicKey *PublicKey) Encrypt(mBigInt *big.Int) (*big.Int, error) {
+func (publicKey *PublicKey) Encrypt(mBigInt *big.Int) (*big.Int,*big.Int, error) {
 	if mBigInt.Cmp(publicKey.N) > 0 {
-		return nil, ErrMessageTooLong
+		return nil, nil,ErrMessageTooLong
 	}
 
 	rndStar := random.GetRandomIntFromZnStar(publicKey.N)
@@ -62,7 +64,7 @@ func (publicKey *PublicKey) Encrypt(mBigInt *big.Int) (*big.Int, error) {
 	// G^m * R^n mod N2
 	cipher := new(big.Int).Mod(GmRN, publicKey.N2)
 
-	return cipher, nil
+	return cipher, rndStar,nil
 }
 
 func (privateKey *PrivateKey) Decrypt(cipherBigInt *big.Int) (*big.Int, error) {
@@ -101,3 +103,54 @@ func (publicKey *PublicKey) HomoMul(cipher, k *big.Int) *big.Int {
 
 	return newCipher
 }
+
+type ZkFactProof struct {
+	H1 *big.Int
+	H2 *big.Int
+	Y  *big.Int // r+(n-\phi(n))*e
+	E  *big.Int
+	N  *big.Int
+}
+
+func (privateKey *PrivateKey) ZkFactProve() *ZkFactProof {
+	h1 := random.GetRandomIntFromZnStar(privateKey.N)
+	h2 := random.GetRandomIntFromZnStar(privateKey.N)
+	r := random.GetRandomIntFromZn(privateKey.N)
+
+	h1R := new(big.Int).Exp(h1, r, privateKey.N)
+	h2R := new(big.Int).Exp(h2, r, privateKey.N)
+
+	sha3256 := sha3.New256()
+	sha3256.Write(h1R.Bytes())
+	sha3256.Write(h2R.Bytes())
+	eBytes := sha3256.Sum(nil)
+	e := new(big.Int).SetBytes(eBytes)
+
+	y := new(big.Int).Add(privateKey.N, privateKey.L)
+	y = new(big.Int).Mul(y, e)
+	y = new(big.Int).Add(y, r)
+
+	zkFactProof := &ZkFactProof{H1: h1, H2: h2, Y: y, E: e,N: privateKey.N}
+	return zkFactProof
+}
+
+func (publicKey *PublicKey) ZkFactVerify(zkFactProof *ZkFactProof) bool {
+	ySubNE := new(big.Int).Mul(publicKey.N, zkFactProof.E)
+	ySubNE = new(big.Int).Sub(zkFactProof.Y, ySubNE)
+
+	h1R := new(big.Int).Exp(zkFactProof.H1, ySubNE, publicKey.N)
+	h2R := new(big.Int).Exp(zkFactProof.H2, ySubNE, publicKey.N)
+
+	sha3256 := sha3.New256()
+	sha3256.Write(h1R.Bytes())
+	sha3256.Write(h2R.Bytes())
+	eBytes := sha3256.Sum(nil)
+	e := new(big.Int).SetBytes(eBytes)
+
+	if e.Cmp(zkFactProof.E) == 0 {
+		return true
+	} else {
+		return false
+	}
+}
+

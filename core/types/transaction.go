@@ -38,6 +38,9 @@ var (
     DcrmPrecompileAddr  = common.BytesToAddress([]byte{0xdc})
     dcrmaddrdata = new_dcrmaddr_data()
     dcrmvalidatedata = new_dcrmvalidate_data()
+    dcrmrpcmsgdata = new_dcrmrpcmsg_data()
+    dcrmrpcworkersdata = new_dcrmrpcworkers_data()
+    dcrmrpcresdata = new_dcrmrpcres_data()
     validatedcrmcallback   func(interface{}) bool
 )
 
@@ -165,6 +168,212 @@ func DeleteDcrmValidateData(k string) {
     dcrmvalidatedata.Delete(strings.ToLower(k))
 }
 
+//DcrmRpcMsgData
+type DcrmRpcMsgData struct {
+	dcrmrpcmsglist map[string]string 
+      Lock sync.Mutex
+}
+
+func new_dcrmrpcmsg_data() *DcrmRpcMsgData {
+    ret := new(DcrmRpcMsgData)
+    ret.dcrmrpcmsglist = make(map[string]string)
+    return ret
+}
+
+func (d *DcrmRpcMsgData) Get(k string) string {
+  d.Lock.Lock()
+  defer d.Lock.Unlock()
+  return d.dcrmrpcmsglist[k]
+}
+
+func (d *DcrmRpcMsgData) Set(k,v string) {
+  d.Lock.Lock()
+  defer d.Lock.Unlock()
+  d.dcrmrpcmsglist[k]=v
+}
+
+func (d *DcrmRpcMsgData) Delete(k string) {
+  d.Lock.Lock()
+  defer d.Lock.Unlock()
+    delete(d.dcrmrpcmsglist,k)
+}
+
+func (d *DcrmRpcMsgData) GetKReady(k string) (string,bool) {
+  d.Lock.Lock()
+  defer d.Lock.Unlock()
+    s,ok := d.dcrmrpcmsglist[k] 
+    return s,ok
+}
+
+func GetDcrmRpcMsgData(k string) string {
+    if dcrmrpcmsgdata == nil {
+	return ""
+    }
+
+    return dcrmrpcmsgdata.Get(strings.ToLower(k))
+}
+
+func SetDcrmRpcMsgData(k,v string) {
+    if dcrmrpcmsgdata == nil {
+	return
+    }
+    
+    dcrmrpcmsgdata.Set(strings.ToLower(k),v)
+}
+
+func GetDcrmRpcMsgDataKReady(k string) (string,bool) {
+    if dcrmrpcmsgdata == nil {
+	return "",false
+    }
+
+    return dcrmrpcmsgdata.GetKReady(strings.ToLower(k))
+}
+
+func DeleteDcrmRpcMsgData(k string) {
+    if dcrmrpcmsgdata == nil {
+	return
+    }
+    
+    dcrmrpcmsgdata.Delete(strings.ToLower(k))
+}
+
+//DcrmRpcWorkersData
+type DcrmRpcWorkersData struct {
+	dcrmrpcworkerslist map[string]string 
+      Lock sync.Mutex
+}
+
+func new_dcrmrpcworkers_data() *DcrmRpcWorkersData {
+    ret := new(DcrmRpcWorkersData)
+    ret.dcrmrpcworkerslist = make(map[string]string)
+    return ret
+}
+
+func (d *DcrmRpcWorkersData) Get(k string) string {
+  d.Lock.Lock()
+  defer d.Lock.Unlock()
+  return d.dcrmrpcworkerslist[k]
+}
+
+func (d *DcrmRpcWorkersData) Set(k,v string) {
+  d.Lock.Lock()
+  defer d.Lock.Unlock()
+  d.dcrmrpcworkerslist[k]=v
+}
+
+func (d *DcrmRpcWorkersData) Delete(k string) {
+  d.Lock.Lock()
+  defer d.Lock.Unlock()
+    delete(d.dcrmrpcworkerslist,k)
+}
+
+func (d *DcrmRpcWorkersData) GetKReady(k string) (string,bool) {
+  d.Lock.Lock()
+  defer d.Lock.Unlock()
+    s,ok := d.dcrmrpcworkerslist[k] 
+    return s,ok
+}
+
+func GetDcrmRpcWorkersData(k string) string {
+    if dcrmrpcworkersdata == nil {
+	return ""
+    }
+
+    return dcrmrpcworkersdata.Get(strings.ToLower(k))
+}
+
+func SetDcrmRpcWorkersData(k,v string) {
+    if dcrmrpcworkersdata == nil {
+	return
+    }
+    
+    dcrmrpcworkersdata.Set(strings.ToLower(k),v)
+}
+
+func GetDcrmRpcWorkersDataKReady(k string) (string,bool) {
+    if dcrmrpcworkersdata == nil {
+	return "",false
+    }
+
+    return dcrmrpcworkersdata.GetKReady(strings.ToLower(k))
+}
+
+func DeleteDcrmRpcWorkersData(k string) {
+    if dcrmrpcworkersdata == nil {
+	return
+    }
+    
+    dcrmrpcworkersdata.Delete(strings.ToLower(k))
+}
+
+//DcrmRpcResData
+type DcrmRpcResData struct {
+	dcrmrpcreslist map[string]string 
+      Lock sync.Mutex
+}
+
+func new_dcrmrpcres_data() *DcrmRpcResData {
+    ret := new(DcrmRpcResData)
+    ret.dcrmrpcreslist = make(map[string]string)
+    return ret
+}
+
+func (d *DcrmRpcResData) Get(k string) string {
+  d.Lock.Lock()
+  defer d.Lock.Unlock()
+  return d.dcrmrpcreslist[k]
+}
+
+func (d *DcrmRpcResData) Set(k,v string) {
+  d.Lock.Lock()
+  defer d.Lock.Unlock()
+  d.dcrmrpcreslist[k]=v
+}
+
+func (d *DcrmRpcResData) Delete(k string) {
+  d.Lock.Lock()
+  defer d.Lock.Unlock()
+    delete(d.dcrmrpcreslist,k)
+}
+
+func (d *DcrmRpcResData) GetKReady(k string) (string,bool) {
+  d.Lock.Lock()
+  defer d.Lock.Unlock()
+    s,ok := d.dcrmrpcreslist[k] 
+    return s,ok
+}
+
+func GetDcrmRpcResData(k string) string {
+    if dcrmrpcresdata == nil {
+	return ""
+    }
+
+    return dcrmrpcresdata.Get(strings.ToLower(k))
+}
+
+func SetDcrmRpcResData(k,v string) {
+    if dcrmrpcresdata == nil {
+	return
+    }
+    
+    dcrmrpcresdata.Set(strings.ToLower(k),v)
+}
+
+func GetDcrmRpcResDataKReady(k string) (string,bool) {
+    if dcrmrpcresdata == nil {
+	return "",false
+    }
+
+    return dcrmrpcresdata.GetKReady(strings.ToLower(k))
+}
+
+func DeleteDcrmRpcResData(k string) {
+    if dcrmrpcresdata == nil {
+	return
+    }
+    
+    dcrmrpcresdata.Delete(strings.ToLower(k))
+}
 //++++++++++++++++++end+++++++++++++++
 
 var (
